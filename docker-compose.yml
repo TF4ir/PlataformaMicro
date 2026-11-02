@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Base de Datos Relacional y Persistencia Local
+  postgres:
+    image: postgres:15-alpine
+    container_name: microlearning-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-54322}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microlearning-net
+
+  # Microservicio Predictivo & Adaptativo (FastAPI)
+  ml-api:
+    build:
+      context: .
+      dockerfile: services/ml-api/Dockerfile
+    container_name: microlearning-ml-api
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=development
+      - API_V1_PREFIX=/api/v1
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
+      - SUPABASE_URL=${SUPABASE_URL:-http://localhost:54321}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_anon}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_service}
+      - ADAPTATION_DEFAULT_THRESHOLD=${ADAPTATION_DEFAULT_THRESHOLD:-0.65}
+      - MIN_ATTEMPTS_FOR_INFERENCE=${MIN_ATTEMPTS_FOR_INFERENCE:-3}
+    ports:
+      - "${ML_API_PORT:-8000}:8000"
+    volumes:
+      - ./services/ml-api:/app
+      - ./packages/contracts:/contracts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/v1/health\").read()' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - microlearning-net
+
+networks:
+  microlearning-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

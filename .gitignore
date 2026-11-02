@@ -1,0 +1,138 @@
+# ==============================================================================
+# MONOREPO GITIGNORE — PLATAFORMA DE MICROAPRENDIZAJE ADAPTATIVO
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Sistema Operativo & Editores
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# ------------------------------------------------------------------------------
+# 2. Entornos y Secretos (CRÍTICO: Protección de credenciales)
+# ------------------------------------------------------------------------------
+.env
+.env*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa*
+
+# ------------------------------------------------------------------------------
+# 3. Node.js & Next.js (apps/web, packages/contracts)
+# ------------------------------------------------------------------------------
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.next/
+out/
+build/
+dist/
+.turbo/
+*.tsbuildinfo
+.vercel/
+
+# ------------------------------------------------------------------------------
+# 4. Python & FastAPI (services/ml-api, ml)
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# ------------------------------------------------------------------------------
+# 5. Machine Learning, Datasets & Artefactos Pesados
+# ------------------------------------------------------------------------------
+# Protección de Privacidad: datasets crudos con datos potenciales
+ml/datasets/raw/*.csv
+ml/datasets/raw/*.parquet
+ml/datasets/raw/*.json
+!ml/datasets/raw/README.md
+!ml/datasets/raw/.gitkeep
+# Artefactos binarios pesados (alojados en almacenamiento de artefactos o Git LFS)
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+!ml/artifacts/README.md
+!ml/artifacts/.gitkeep
+.ipynb_checkpoints/
+
+# ------------------------------------------------------------------------------
+# 6. Supabase & Bases de Datos Locales
+# ------------------------------------------------------------------------------
+.supabase/
+supabase/.temp/
+*.sql.bak
+
+# ------------------------------------------------------------------------------
+# 7. Temporales y Logs
+# ------------------------------------------------------------------------------
+tmp/
+temp/
+logs/
+*.log
+
+# ------------------------------------------------------------------------------
+# 8. Archivos Archivados, Capturas y Auditoría
+# ------------------------------------------------------------------------------
+archive/
+Capturas/
+*.tar.gz
+*.tgz
+*.zip
+*.rar
+*.7z
+.system_generated/
