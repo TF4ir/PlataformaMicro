@@ -29,7 +29,9 @@
       "post": {
         "summary": "Registrar y evaluar respuesta de estudiante a reactivo",
         "operationId": "submit_diagnostic_answer",
-        "tags": ["Evaluación y Aprendizaje"],
+        "tags": [
+          "Evaluación y Aprendizaje"
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/X-Idempotency-Key"
@@ -75,7 +77,9 @@
       "post": {
         "summary": "Registrar respuesta asociada a un intento de actividad específico",
         "operationId": "submit_attempt_answer",
-        "tags": ["Evaluación y Aprendizaje"],
+        "tags": [
+          "Evaluación y Aprendizaje"
+        ],
         "parameters": [
           {
             "name": "attempt_id",
@@ -131,7 +135,9 @@
       "post": {
         "summary": "Calcular predicción multihorizonte de retención y riesgo cognitivo",
         "operationId": "predict_retention_risk",
-        "tags": ["Inferencia y Machine Learning"],
+        "tags": [
+          "Inferencia y Machine Learning"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -172,7 +178,9 @@
       "post": {
         "summary": "Calcular probabilidades de retención proyectadas (alias homologado)",
         "operationId": "predict_retention_alias",
-        "tags": ["Inferencia y Machine Learning"],
+        "tags": [
+          "Inferencia y Machine Learning"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -207,7 +215,9 @@
       "get": {
         "summary": "Obtener recomendaciones activas y microcontenidos asignados",
         "operationId": "get_student_recommendations",
-        "tags": ["Adaptación Pedagógica"],
+        "tags": [
+          "Adaptación Pedagógica"
+        ],
         "parameters": [
           {
             "name": "student_id",
@@ -250,7 +260,12 @@
             "description": "Estado de las recomendaciones a filtrar",
             "schema": {
               "type": "string",
-              "enum": ["pending", "delivered", "completed", "all"],
+              "enum": [
+                "pending",
+                "delivered",
+                "completed",
+                "all"
+              ],
               "default": "pending"
             }
           }
@@ -282,14 +297,19 @@
       "post": {
         "summary": "Generar recomendación pedagógica adaptativa bajo demanda",
         "operationId": "generate_adaptive_recommendation",
-        "tags": ["Adaptación Pedagógica"],
+        "tags": [
+          "Adaptación Pedagógica"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["student_id", "knowledge_component_id"],
+                "required": [
+                  "student_id",
+                  "knowledge_component_id"
+                ],
                 "properties": {
                   "student_id": {
                     "type": "string",
@@ -332,7 +352,9 @@
       "post": {
         "summary": "Warmup ping para mitigar arranque en frío en blitz.cloud",
         "operationId": "warmup_service",
-        "tags": ["Monitoreo y Operaciones"],
+        "tags": [
+          "Monitoreo y Operaciones"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -344,6 +366,392 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/content-generation/jobs": {
+      "post": {
+        "summary": "Crear trabajo de generación de preguntas asistido por IA",
+        "operationId": "create_content_generation_job",
+        "tags": [
+          "Generación de Contenido Docente"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGenerationJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Trabajo de generación encolado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestProblem"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenProblem"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/content-generation/jobs/{job_id}": {
+      "get": {
+        "summary": "Consultar estado y telemetría de un trabajo de generación",
+        "operationId": "get_content_generation_job",
+        "tags": [
+          "Generación de Contenido Docente"
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "UUID del trabajo de generación",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado del trabajo obtenido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJobResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenProblem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/content-generation/jobs/{job_id}/drafts": {
+      "get": {
+        "summary": "Listar borradores de preguntas generados por un trabajo",
+        "operationId": "list_question_drafts_by_job",
+        "tags": [
+          "Generación de Contenido Docente"
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de borradores generados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuestionDraftItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenProblem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/content-generation/drafts/{draft_id}": {
+      "patch": {
+        "summary": "Editar borrador de pregunta antes de su publicación",
+        "operationId": "update_question_draft",
+        "tags": [
+          "Generación de Contenido Docente"
+        ],
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateQuestionDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Borrador actualizado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDraftItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestProblem"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenProblem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/content-generation/jobs/{job_id}/approve": {
+      "post": {
+        "summary": "Aprobar y publicar transaccionalmente borradores al banco canónico",
+        "operationId": "approve_question_drafts",
+        "tags": [
+          "Generación de Contenido Docente"
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchApproveDraftsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Borradores validados y publicados como preguntas canónicas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchApproveDraftsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestProblem"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenProblem"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/content-generation/drafts/{draft_id}/reject": {
+      "post": {
+        "summary": "Rechazar un borrador de pregunta generado por IA",
+        "operationId": "reject_question_draft",
+        "tags": [
+          "Generación de Contenido Docente"
+        ],
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Borrador marcado como rechazado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDraftItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenProblem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/students/me/recommendations": {
+      "get": {
+        "summary": "Obtener recomendaciones y repasos sugeridos para el estudiante autenticado",
+        "description": "Resuelve la identidad del estudiante a partir del token JWT validado (auth.uid()), sin confiar en parámetros de cliente.",
+        "operationId": "get_my_recommendations",
+        "tags": [
+          "Adaptación Pedagógica"
+        ],
+        "responses": {
+          "200": {
+            "description": "Recomendaciones activas del estudiante autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetRecommendationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/students/me/notifications": {
+      "get": {
+        "summary": "Listar avisos in-app persistentes del estudiante autenticado",
+        "operationId": "get_my_notifications",
+        "tags": [
+          "Notificaciones In-App"
+        ],
+        "parameters": [
+          {
+            "name": "unread_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado de avisos y total de no leídos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          }
+        }
+      }
+    },
+    "/api/v1/students/me/notifications/{id}/read": {
+      "patch": {
+        "summary": "Marcar una notificación in-app como leída",
+        "operationId": "mark_notification_read",
+        "tags": [
+          "Notificaciones In-App"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notificación marcada como leída",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedProblem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundProblem"
           }
         }
       }
@@ -423,7 +831,10 @@
           },
           "feedback": {
             "type": "object",
-            "required": ["title", "explanation"],
+            "required": [
+              "title",
+              "explanation"
+            ],
             "properties": {
               "title": {
                 "type": "string",
@@ -437,7 +848,10 @@
             "additionalProperties": false
           },
           "next_question_index": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "minimum": 1,
             "description": "Índice de la siguiente pregunta de la actividad"
           },
@@ -446,7 +860,10 @@
             "description": "Indica si el intento concluyó"
           },
           "current_score": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0.0,
             "maximum": 100.0,
             "description": "Calificación acumulada calculada"
@@ -478,7 +895,11 @@
               "type": "integer",
               "minimum": 1
             },
-            "default": [24, 72, 168],
+            "default": [
+              24,
+              72,
+              168
+            ],
             "description": "Horizontes de proyección en horas"
           },
           "include_shap_values": {
@@ -529,7 +950,12 @@
           },
           "risk_level": {
             "type": "string",
-            "enum": ["low", "medium", "high", "critical"],
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
             "description": "Categorización pedagógica del riesgo"
           }
         },
@@ -582,7 +1008,10 @@
             }
           },
           "feature_importance": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": {
               "type": "number"
             },
@@ -594,7 +1023,10 @@
             "description": "Corte temporal de eventos para evitar data leakage"
           },
           "reason": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Detalle explicativo en caso de insuficiencia de datos"
           },
           "created_at": {
@@ -626,7 +1058,8 @@
             "enum": [
               "text_summary",
               "infographic_card",
-              "concept_map"
+              "concept_map",
+              "youtube_video"
             ]
           },
           "estimated_duration_seconds": {
@@ -683,7 +1116,10 @@
             "type": "string"
           },
           "review_activity_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "status": {
@@ -751,7 +1187,10 @@
             "items": {
               "type": "string"
             },
-            "example": ["DAS3H", "BKT"]
+            "example": [
+              "DAS3H",
+              "BKT"
+            ]
           },
           "timestamp": {
             "type": "string",
@@ -809,6 +1248,478 @@
                 }
               }
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateGenerationJobRequest": {
+        "type": "object",
+        "description": "Solicitud para crear un trabajo de generación asistida de reactivos a partir de un archivo en Supabase Storage",
+        "required": [
+          "storage_path",
+          "original_filename",
+          "mime_type",
+          "file_size_bytes",
+          "file_checksum"
+        ],
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID del curso curricular asociado"
+          },
+          "unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID de la unidad curricular (opcional)"
+          },
+          "storage_bucket": {
+            "type": "string",
+            "default": "teacher-materials",
+            "description": "Nombre del bucket privado en Supabase Storage"
+          },
+          "storage_path": {
+            "type": "string",
+            "description": "Ruta relativa del objeto cargado en el bucket privado"
+          },
+          "original_filename": {
+            "type": "string",
+            "description": "Nombre original del archivo PDF o PPTX cargado"
+          },
+          "mime_type": {
+            "type": "string",
+            "enum": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ],
+            "description": "Tipo MIME verificado del documento"
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31457280,
+            "description": "Tamaño del archivo en bytes (límite 30 MB)"
+          },
+          "file_checksum": {
+            "type": "string",
+            "description": "Hash SHA-256 del contenido del archivo para integridad"
+          },
+          "target_num_questions": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5,
+            "description": "Número de reactivos solicitados"
+          },
+          "provider": {
+            "type": "string",
+            "default": "mock",
+            "description": "Proveedor LLM seleccionado"
+          },
+          "model_id": {
+            "type": "string",
+            "default": "mock-v1",
+            "description": "Identificador del modelo LLM"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GenerationJobResponse": {
+        "type": "object",
+        "description": "Detalles del estado de procesamiento de un trabajo de generación documental",
+        "required": [
+          "job_id",
+          "tenant_id",
+          "created_by",
+          "status",
+          "original_filename",
+          "created_at"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "course_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "unit_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "processing",
+              "review_required",
+              "approved",
+              "rejected",
+              "failed"
+            ],
+            "description": "Estado del ciclo de vida del trabajo"
+          },
+          "original_filename": {
+            "type": "string"
+          },
+          "total_drafts_count": {
+            "type": "integer",
+            "default": 0
+          },
+          "provider": {
+            "type": "string",
+            "description": "Proveedor LLM configurado utilizado"
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Identificador de modelo utilizado"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_message_safe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Mensaje seguro de error si el trabajo falló"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QuestionDraftOption": {
+        "type": "object",
+        "required": [
+          "text",
+          "is_correct"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Texto del enunciado de la alternativa"
+          },
+          "is_correct": {
+            "type": "boolean",
+            "description": "Indica si es la alternativa correcta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QuestionDraftSourceReference": {
+        "type": "object",
+        "required": [
+          "type",
+          "index"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "page",
+              "slide"
+            ]
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "snippet": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QuestionDraftItem": {
+        "type": "object",
+        "description": "Borrador de pregunta generado por IA pendiente de validación docente",
+        "required": [
+          "id",
+          "generation_job_id",
+          "suggested_kc_name",
+          "question_text",
+          "explanation",
+          "options",
+          "status",
+          "source_references",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation_job_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "knowledge_component_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "KC asociado por el docente o null si pendiente"
+          },
+          "suggested_kc_name": {
+            "type": "string",
+            "description": "Nombre de KC sugerido por el modelo"
+          },
+          "question_text": {
+            "type": "string",
+            "description": "Enunciado del reactivo"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Fundamento formativo respaldado por el texto fuente"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionDraftOption"
+            },
+            "minItems": 2,
+            "maxItems": 5,
+            "description": "Lista de alternativas propuestas con exactamente una correcta"
+          },
+          "suggested_difficulty": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.5
+          },
+          "suggested_bloom_level": {
+            "type": "string",
+            "enum": [
+              "remember",
+              "understand",
+              "apply",
+              "analyze"
+            ]
+          },
+          "source_references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionDraftSourceReference"
+            },
+            "description": "Trazabilidad al archivo fuente (páginas o diapositivas)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "edited",
+              "approved",
+              "rejected"
+            ]
+          },
+          "approved_question_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateQuestionDraftRequest": {
+        "type": "object",
+        "description": "Edición docente de un borrador de pregunta antes de su aprobación",
+        "properties": {
+          "knowledge_component_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "question_text": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionDraftOption"
+            },
+            "minItems": 2,
+            "maxItems": 5
+          },
+          "suggested_difficulty": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchApproveDraftsRequest": {
+        "type": "object",
+        "description": "Aprobación y publicación transaccional de borradores al banco canónico",
+        "required": [
+          "draft_ids"
+        ],
+        "properties": {
+          "draft_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchApproveDraftsResponse": {
+        "type": "object",
+        "required": [
+          "approved_count",
+          "published_question_ids"
+        ],
+        "properties": {
+          "approved_count": {
+            "type": "integer"
+          },
+          "published_question_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RejectDraftRequest": {
+        "type": "object",
+        "properties": {
+          "rejection_reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NotificationItem": {
+        "type": "object",
+        "description": "Aviso in-app persistido para el estudiante",
+        "required": [
+          "id",
+          "notification_type",
+          "title",
+          "body",
+          "target_path",
+          "created_at",
+          "is_read"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notification_type": {
+            "type": "string",
+            "enum": [
+              "review_reminder",
+              "new_assignment",
+              "system_notice"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "target_path": {
+            "type": "string",
+            "description": "Ruta interna de la aplicación (ej. /learn/rec-123 o /quiz/rec-123)"
+          },
+          "review_assignment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "is_read": {
+            "type": "boolean"
+          },
+          "read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NotificationListResponse": {
+        "type": "object",
+        "required": [
+          "notifications",
+          "unread_count"
+        ],
+        "properties": {
+          "notifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItem"
+            }
+          },
+          "unread_count": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "additionalProperties": false

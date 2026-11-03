@@ -20,6 +20,11 @@ Thumbs.db
 *.swo
 *~
 
+# Archivos temporales de sesión local
+RESUMEN_SESION_HOY.md
+*SESION*.md
+plan_desarrollo_recursos_microcontenido_quizzes_notificaciones.md
+
 # ------------------------------------------------------------------------------
 # 2. Entornos y Secretos (CRÍTICO: Protección de credenciales)
 # ------------------------------------------------------------------------------
@@ -115,6 +120,7 @@ ml/datasets/raw/*.json
 # ------------------------------------------------------------------------------
 .supabase/
 supabase/.temp/
+supabase/.branches/
 *.sql.bak
 
 # ------------------------------------------------------------------------------

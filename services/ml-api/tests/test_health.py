@@ -1,6 +1,7 @@
 """Basic health check and warmup tests."""
 
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 client = TestClient(app)

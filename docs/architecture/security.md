@@ -43,22 +43,46 @@ El sistema combina el control de acceso basado en roles (**RBAC**) con política
 | `recommendations` | SELECT | Todos | Tenant | Secciones a cargo | Propios únicamente | Seudonimizado | Todos |
 | `recommendations` | UPDATE (status) | Full | Tenant | Secciones a cargo | Propios (completar) | Denegado | Full |
 | `review_assignments` | SELECT | Todos | Tenant | Secciones a cargo | Propios únicamente | Seudonimizado | Todos |
+| `content_generation_jobs` | SELECT | Todos | Tenant | Cursos a cargo | Denegado | Denegado | Todos |
+| `content_generation_jobs` | INSERT | Full | Tenant | Cursos a cargo | Denegado | Denegado | Full |
+| `content_generation_jobs` | UPDATE/DELETE | Full | Tenant | Denegado (Trigger) | Denegado | Denegado | Full |
+| `question_drafts` | SELECT | Todos | Tenant | Cursos a cargo | Denegado | Denegado | Todos |
+| `question_drafts` | INSERT | Full | Tenant | Cursos a cargo | Denegado | Denegado | Full |
+| `question_drafts` | UPDATE | Full | Tenant | Borrador/Edición | Denegado | Denegado | Full (Aprobación) |
+| `question_drafts` | DELETE | Full | Tenant | Cursos a cargo | Denegado | Denegado | Full |
+| `notifications` | SELECT | Todos | Tenant | Alumnos Asignados | Propios únicamente | Denegado | Todos |
+| `notifications` | INSERT | Full | Tenant | Alumnos Asignados | Denegado | Denegado | Full |
+| `notifications` | UPDATE | Full | Tenant | Denegado | Solo `read_at` | Denegado | Full |
+| `notifications` | DELETE | Full | Tenant | Denegado | Denegado | Denegado | Full |
+| `storage.objects` (`teacher-materials`) | SELECT | Todos | Tenant | Propios (Mismo tenant) | Denegado | Denegado | Todos |
+| `storage.objects` (`teacher-materials`) | INSERT/UPDATE/DELETE | Full | Tenant | Propios (Mismo tenant) | Denegado | Denegado | Full |
 
 ### 2.3 Condiciones de Evaluación ABAC (Row Level Security):
 1. **Condición de Pertenencia Estudiantil:**
    ```sql
    student_id = (SELECT auth.uid()) AND tenant_id = (SELECT current_user_tenant_id())
    ```
-2. **Condición de Titularidad Docente:**
+2. **Condición de Titularidad Docente de Estudiante:**
    ```sql
    is_teacher_of_student(student_id) = true
    ```
    Verifica que exista al menos una sección activa donde el docente sea titular y el estudiante esté formalmente matriculado.
-3. **Inmutabilidad Absoluta del Registro de Respuestas:**
+3. **Condición de Titularidad Docente de Curso:**
+   ```sql
+   is_teacher_of_course(course_id) = true
+   ```
+   Verifica que exista al menos una sección activa del curso donde el docente esté formalmente asignado como titular.
+4. **Inmutabilidad Absoluta del Registro de Respuestas:**
    ```sql
    REVOKE UPDATE, DELETE ON answer_events FROM anon, authenticated;
    ```
    Ningún rol en la aplicación web, ni siquiera administradores de escuela, puede alterar marcas de tiempo, reactivos respondidos ni resultados observados.
+5. **Cuarentena de Borradores y Transición de Estados:**
+   Los borradores generados por IA en `question_drafts` no pueden transicionar a `approved` ni vincular `approved_question_id` mediante consultas SQL directas de cliente; dicha acción queda reservada a la función transaccional backend autorizada.
+6. **Protección de Avisos In-App:**
+   Los estudiantes tienen restringida la mutación en `notifications` exclusivamente al campo `read_at`, impidiendo la falsificación de remitente, contenido o fecha de creación.
+7. **Aislamiento Multitenant en Storage y Rutas de Documentos:**
+   Toda subida al bucket `teacher-materials` y toda referencia `storage_path` en `content_generation_jobs` está restringida al prefijo institucional `tenant_id::text || '/'`, impidiendo ataques de referencia indirecta a documentos de otras escuelas.
 
 ---
 

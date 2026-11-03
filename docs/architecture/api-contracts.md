@@ -468,3 +468,253 @@ Todos los códigos de error HTTP (400, 401, 403, 404, 409, 422, 500, 503) retorn
   "additionalProperties": false
 }
 ```
+
+---
+
+### 2.6 Ingesta Documental y Generación Asistida de Preguntas (Docente)
+
+#### 2.6.1 Crear Trabajo de Generación
+- **Ruta:** `POST /api/v1/content-generation/jobs`
+- **Rol Autorizado:** `teacher`, `admin`, `super_admin`
+- **Cabeceras:** `Authorization: Bearer <jwt>`, `Content-Type: application/json`
+- **Seguridad:** El backend deriva `tenant_id` y `created_by` del JWT (`auth.uid()`). El docente debe haber subido previamente el archivo al bucket privado `teacher-materials`.
+
+##### Esquema de Petición (Request):
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateGenerationJobRequest",
+  "type": "object",
+  "required": ["storage_path", "original_filename", "mime_type", "file_size_bytes", "file_checksum"],
+  "properties": {
+    "course_id": { "type": "string", "format": "uuid" },
+    "unit_id": { "type": "string", "format": "uuid" },
+    "storage_bucket": { "type": "string", "default": "teacher-materials" },
+    "storage_path": { "type": "string" },
+    "original_filename": { "type": "string" },
+    "mime_type": {
+      "type": "string",
+      "enum": [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ]
+    },
+    "file_size_bytes": { "type": "integer", "minimum": 1, "maximum": 31457280 },
+    "file_checksum": { "type": "string" }
+  },
+  "additionalProperties": false
+}
+```
+
+##### Esquema de Respuesta (202 Accepted):
+Retorna objeto `GenerationJobResponse` con estado `'queued'`, identificador de trabajo `job_id`, proveedor y modelo configurados.
+
+#### 2.6.2 Consultar y Aprobar Borradores (Human-in-the-Loop)
+- **Consultar Borradores:** `GET /api/v1/content-generation/jobs/{job_id}/drafts`
+- **Editar Borrador:** `PATCH /api/v1/content-generation/drafts/{draft_id}`
+- **Aprobar Borradores:** `POST /api/v1/content-generation/jobs/{job_id}/approve`
+  - Valida que cada borrador tenga un `knowledge_component_id` asignado y exactamente una opción correcta.
+  - Inserta transaccionalmente en `questions` y `question_options`, vinculando `approved_question_id`.
+- **Rechazar Borrador:** `POST /api/v1/content-generation/drafts/{draft_id}/reject`
+
+---
+
+### 2.7 Recomendaciones y Notificaciones In-App para Estudiantes
+
+#### Regla de Seguridad Antisuplantación:
+Las peticiones del estudiante resuelven su identidad **exclusivamente desde el token JWT validado (`auth.uid()`)**. Queda terminantemente prohibido exigir o aceptar `student_id` enviado en el cuerpo o la URL para operaciones del propio estudiante.
+
+#### 2.7.1 Consulta de Recomendaciones del Estudiante Autenticado
+- **Ruta:** `GET /api/v1/students/me/recommendations`
+- **Rol Autorizado:** `student`
+- **Cabeceras:** `Authorization: Bearer <jwt>`
+- **Respuesta (200 OK):** Retorna `GetRecommendationsResponse` con los repasos y microcontenidos asignados al estudiante de la sesión.
+
+#### 2.7.2 Consulta y Gestión de Avisos In-App
+- **Ruta:** `GET /api/v1/students/me/notifications?unread_only=true`
+- **Rol Autorizado:** `student`
+- **Respuesta (200 OK):**
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotificationListResponse",
+  "type": "object",
+  "required": ["notifications", "unread_count"],
+  "properties": {
+    "notifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "notification_type", "title", "body", "target_path", "created_at", "is_read"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "notification_type": { "type": "string", "enum": ["review_reminder", "new_assignment", "system_notice"] },
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "target_path": { "type": "string" },
+          "review_assignment_id": { "type": ["string", "null"], "format": "uuid" },
+          "is_read": { "type": "boolean" },
+          "read_at": { "type": ["string", "null"], "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "unread_count": { "type": "integer", "minimum": 0 }
+  }
+}
+```
+- **Marcar Leído:** `PATCH /api/v1/students/me/notifications/{id}/read` (Retorna `NotificationItem` actualizado con `read_at = now()`).
+
+---
+
+### 2.8 Modelos Pydantic v2 Propuestos para Ingesta y Notificaciones (`services/ml-api`)
+
+Los siguientes modelos Pydantic v2 reflejan de manera estricta los esquemas de OpenAPI 3.1.0 y deben ubicarse en `services/ml-api/app/schemas/content_generation.py` y `services/ml-api/app/schemas/notifications.py`:
+
+```python
+"""Esquemas Pydantic v2 para Ingesta de Documentos y Avisos In-App."""
+
+from datetime import datetime
+from enum import Enum
+from typing import List, Optional
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class GenerationJobStatus(str, Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    REVIEW_REQUIRED = "review_required"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+class DraftStatus(str, Enum):
+    DRAFT = "draft"
+    EDITED = "edited"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class NotificationType(str, Enum):
+    REVIEW_REMINDER = "review_reminder"
+    NEW_ASSIGNMENT = "new_assignment"
+    SYSTEM_NOTICE = "system_notice"
+
+
+class CreateGenerationJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: Optional[UUID] = None
+    unit_id: Optional[UUID] = None
+    storage_bucket: str = "teacher-materials"
+    storage_path: str
+    original_filename: str
+    mime_type: str = Field(
+        ...,
+        pattern=r"^(application/pdf|application/vnd\.openxmlformats-officedocument\.presentationml\.presentation)$",
+    )
+    file_size_bytes: int = Field(..., ge=1, le=31457280)
+    file_checksum: str
+
+
+class GenerationJobResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: UUID
+    status: GenerationJobStatus
+    storage_path: str
+    original_filename: str
+    provider: str
+    model_id: str
+    prompt_version: str
+    created_at: datetime
+    error_code: Optional[str] = None
+    error_message_safe: Optional[str] = None
+
+
+class QuestionDraftOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    is_correct: bool
+
+
+class QuestionDraftSourceReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(..., pattern=r"^(page|slide)$")
+    index: int = Field(..., ge=1)
+    snippet: Optional[str] = None
+
+
+class QuestionDraftItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    generation_job_id: UUID
+    knowledge_component_id: Optional[UUID] = None
+    suggested_kc_name: str
+    question_text: str
+    explanation: str
+    options: List[QuestionDraftOption] = Field(..., min_length=2, max_length=4)
+    suggested_difficulty: float = Field(0.5, ge=0.0, le=1.0)
+    suggested_bloom_level: str = "understand"
+    source_references: List[QuestionDraftSourceReference] = Field(default_factory=list)
+    status: DraftStatus
+    approved_question_id: Optional[UUID] = None
+    created_at: datetime
+
+
+class UpdateQuestionDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_component_id: Optional[UUID] = None
+    question_text: Optional[str] = None
+    explanation: Optional[str] = None
+    options: Optional[List[QuestionDraftOption]] = None
+    suggested_difficulty: Optional[float] = Field(None, ge=0.0, le=1.0)
+    suggested_bloom_level: Optional[str] = None
+
+
+class BatchApproveDraftsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_ids: List[UUID] = Field(..., min_length=1)
+
+
+class BatchApproveDraftsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approved_count: int
+    published_question_ids: List[UUID]
+
+
+class RejectDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rejection_reason: Optional[str] = None
+
+
+class NotificationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    notification_type: NotificationType
+    title: str
+    body: str
+    target_path: str
+    review_assignment_id: Optional[UUID] = None
+    is_read: bool
+    read_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    notifications: List[NotificationItem]
+    unread_count: int = Field(..., ge=0)
+```
+

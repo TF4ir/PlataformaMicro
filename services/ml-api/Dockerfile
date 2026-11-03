@@ -19,7 +19,7 @@ COPY pyproject.toml README.md ./
 RUN pip install --upgrade pip && \
     pip install poetry && \
     poetry config virtualenvs.in-project true && \
-    poetry install --only main --no-interaction --no-ansi
+    poetry install --only main --no-root --no-interaction --no-ansi
 
 # Runner stage
 FROM python:3.11-slim AS runner

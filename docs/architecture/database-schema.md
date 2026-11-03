@@ -44,7 +44,8 @@ CREATE TYPE activity_type_enum AS ENUM (
 CREATE TYPE content_type_enum AS ENUM (
     'text_summary',
     'infographic_card',
-    'concept_map'
+    'concept_map',
+    'youtube_video'
 );
 
 CREATE TYPE risk_level_enum AS ENUM (
@@ -80,6 +81,28 @@ CREATE TYPE assignment_status_enum AS ENUM (
     'expired'
 );
 
+CREATE TYPE generation_job_status_enum AS ENUM (
+    'queued',
+    'processing',
+    'review_required',
+    'approved',
+    'rejected',
+    'failed'
+);
+
+CREATE TYPE draft_status_enum AS ENUM (
+    'draft',
+    'edited',
+    'approved',
+    'rejected'
+);
+
+CREATE TYPE notification_type_enum AS ENUM (
+    'review_reminder',
+    'new_assignment',
+    'system_notice'
+);
+
 -- ============================================================================
 -- 2. Entidades de Tenencia, Identidad y Usuarios
 -- ============================================================================
@@ -98,11 +121,23 @@ CREATE TABLE tenants (
 CREATE TABLE profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    student_code TEXT UNIQUE,
     full_name TEXT NOT NULL,
     role user_role NOT NULL DEFAULT 'student',
     avatar_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE auth_recovery_pins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    pin_hash TEXT NOT NULL,
+    created_by UUID NOT NULL REFERENCES profiles(id),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '30 minutes'),
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ============================================================================
@@ -169,9 +204,14 @@ CREATE TABLE microcontents (
     content_type content_type_enum NOT NULL,
     content_body JSONB NOT NULL,
     estimated_duration_seconds INTEGER NOT NULL DEFAULT 180 CHECK (estimated_duration_seconds > 0),
+    content_schema_version INTEGER NOT NULL DEFAULT 1,
+    version_group_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    version_number INTEGER NOT NULL DEFAULT 1,
+    source_metadata JSONB DEFAULT '{}'::jsonb,
     created_by UUID NOT NULL REFERENCES profiles(id),
     is_published BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(version_group_id, version_number)
 );
 
 -- ============================================================================
@@ -348,6 +388,72 @@ CREATE TABLE review_assignments (
 );
 
 -- ============================================================================
+-- 7.1 Módulos de Generación Asistida de Contenido y Notificaciones In-App
+-- ============================================================================
+
+CREATE TABLE content_generation_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    course_id UUID REFERENCES courses(id) ON DELETE RESTRICT,
+    unit_id UUID REFERENCES units(id) ON DELETE SET NULL,
+    created_by UUID NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+    storage_bucket TEXT NOT NULL DEFAULT 'teacher-materials' CHECK (storage_bucket = 'teacher-materials'),
+    storage_path TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL CHECK (mime_type IN ('application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation')),
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes > 0 AND file_size_bytes <= 31457280),
+    file_checksum TEXT NOT NULL,
+    status generation_job_status_enum NOT NULL DEFAULT 'queued',
+    provider TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    prompt_version TEXT NOT NULL DEFAULT 'v1',
+    error_code TEXT,
+    error_message_safe TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_content_gen_jobs_storage_path_tenant CHECK (split_part(storage_path, '/', 1) = tenant_id::text)
+);
+
+CREATE TABLE question_drafts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    generation_job_id UUID NOT NULL REFERENCES content_generation_jobs(id) ON DELETE CASCADE,
+    knowledge_component_id UUID REFERENCES knowledge_components(id) ON DELETE SET NULL,
+    suggested_kc_name TEXT NOT NULL,
+    question_text TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    options JSONB NOT NULL,
+    suggested_difficulty NUMERIC(4,3) DEFAULT 0.500 CHECK (suggested_difficulty >= 0.0 AND suggested_difficulty <= 1.0),
+    suggested_bloom_level TEXT DEFAULT 'understand',
+    source_references JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(source_references) = 'array'),
+    status draft_status_enum NOT NULL DEFAULT 'draft',
+    approved_question_id UUID REFERENCES questions(id) ON DELETE SET NULL,
+    reviewed_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_question_drafts_options_array CHECK (jsonb_typeof(options) = 'array'),
+    CONSTRAINT uq_question_drafts_approved_question UNIQUE (approved_question_id)
+);
+
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    review_assignment_id UUID REFERENCES review_assignments(id) ON DELETE SET NULL,
+    notification_type notification_type_enum NOT NULL DEFAULT 'review_reminder',
+    title TEXT NOT NULL CHECK (char_length(title) > 0),
+    body TEXT NOT NULL CHECK (char_length(body) > 0),
+    target_path TEXT NOT NULL CHECK (char_length(target_path) > 0),
+    deduplication_key TEXT NOT NULL,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(tenant_id, deduplication_key)
+);
+
+-- ============================================================================
 -- 8. Índices Estratégicos de Alto Rendimiento
 -- ============================================================================
 
@@ -363,6 +469,14 @@ CREATE INDEX idx_predictions_tenant ON predictions(tenant_id);
 -- Recomendaciones y repasos pendientes
 CREATE INDEX idx_recommendations_student_status ON recommendations(student_id, status);
 CREATE INDEX idx_review_assignments_student_status ON review_assignments(student_id, status);
+
+-- Índices para generación de contenido y notificaciones
+CREATE INDEX idx_content_gen_jobs_tenant_status ON content_generation_jobs(tenant_id, status);
+CREATE INDEX idx_content_gen_jobs_creator ON content_generation_jobs(created_by);
+CREATE INDEX idx_question_drafts_job ON question_drafts(generation_job_id);
+CREATE INDEX idx_question_drafts_tenant_status ON question_drafts(tenant_id, status);
+CREATE INDEX idx_microcontents_version_group ON microcontents(version_group_id);
+CREATE INDEX idx_notifications_student_unread ON notifications(student_id) WHERE read_at IS NULL;
 
 -- Claves foráneas y filtrado por tenant
 CREATE INDEX idx_profiles_tenant ON profiles(tenant_id);
@@ -381,6 +495,7 @@ CREATE INDEX idx_student_ks_student ON student_knowledge_states(student_id);
 -- Habilitar RLS en el 100% de las tablas
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE auth_recovery_pins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE enrollments ENABLE ROW LEVEL SECURITY;
@@ -399,6 +514,9 @@ ALTER TABLE model_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recommendations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_generation_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE question_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- Funciones de Seguridad Auxiliares (SECURITY DEFINER optimizadas)
 CREATE OR REPLACE FUNCTION current_user_tenant_id()
@@ -419,6 +537,17 @@ RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
         JOIN public.enrollments e ON e.section_id = s.id
         WHERE s.teacher_id = (SELECT auth.uid())
           AND e.student_id = p_student_id
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION is_teacher_of_course(p_course_id UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+    SELECT EXISTS (
+        SELECT 1 
+        FROM public.sections s
+        WHERE s.course_id = p_course_id
+          AND s.teacher_id = (SELECT auth.uid())
+          AND s.tenant_id = (SELECT public.current_user_tenant_id())
     );
 $$;
 
@@ -547,5 +676,323 @@ CREATE POLICY "review_assignments_select" ON review_assignments
         student_id = (SELECT auth.uid())
         OR (SELECT is_teacher_of_student(student_id))
         OR (SELECT current_user_role()) IN ('super_admin', 'admin')
+    );
+
+-- Políticas para Auth Recovery Pins
+CREATE POLICY "recovery_pins_policy" ON auth_recovery_pins
+    FOR ALL USING (
+        created_by = (SELECT auth.uid()) 
+        OR student_id = (SELECT auth.uid()) 
+        OR (SELECT current_user_role()) IN ('super_admin', 'admin')
+    );
+
+-- Políticas para Content Generation Jobs
+CREATE POLICY "content_gen_jobs_select" ON content_generation_jobs
+    FOR SELECT USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                (SELECT current_user_role()) = 'admin'
+                OR (
+                    created_by = (SELECT auth.uid())
+                    AND (course_id IS NULL OR is_teacher_of_course(course_id))
+                )
+            )
+        )
+    );
+
+CREATE POLICY "content_gen_jobs_insert" ON content_generation_jobs
+    FOR INSERT WITH CHECK (
+        status = 'queued'
+        AND tenant_id = (SELECT current_user_tenant_id())
+        AND created_by = (SELECT auth.uid())
+        AND (SELECT current_user_role()) IN ('teacher', 'admin', 'super_admin')
+        AND (
+            (SELECT current_user_role()) IN ('super_admin', 'admin')
+            OR course_id IS NULL
+            OR is_teacher_of_course(course_id)
+        )
+        AND split_part(storage_path, '/', 1) = (SELECT current_user_tenant_id())::text
+        AND storage_bucket = 'teacher-materials'
+    );
+
+CREATE POLICY "content_gen_jobs_update" ON content_generation_jobs
+    FOR UPDATE USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (SELECT current_user_role()) = 'admin'
+        )
+    )
+    WITH CHECK (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (SELECT current_user_role()) = 'admin'
+        )
+    );
+
+CREATE POLICY "content_gen_jobs_delete" ON content_generation_jobs
+    FOR DELETE USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                (SELECT current_user_role()) = 'admin'
+                OR (
+                    created_by = (SELECT auth.uid())
+                    AND (course_id IS NULL OR is_teacher_of_course(course_id))
+                )
+            )
+        )
+    );
+
+-- Políticas para Question Drafts
+CREATE POLICY "question_drafts_select" ON question_drafts
+    FOR SELECT USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                (SELECT current_user_role()) = 'admin'
+                OR EXISTS (
+                    SELECT 1 FROM public.content_generation_jobs j
+                    WHERE j.id = question_drafts.generation_job_id
+                      AND j.created_by = (SELECT auth.uid())
+                      AND (j.course_id IS NULL OR is_teacher_of_course(j.course_id))
+                )
+            )
+        )
+    );
+
+CREATE POLICY "question_drafts_insert" ON question_drafts
+    FOR INSERT WITH CHECK (
+        status = 'draft'
+        AND approved_question_id IS NULL
+        AND (
+            (SELECT current_user_role()) = 'super_admin'
+            OR (
+                tenant_id = (SELECT current_user_tenant_id())
+                AND (SELECT current_user_role()) IN ('teacher', 'admin')
+                AND EXISTS (
+                    SELECT 1 FROM public.content_generation_jobs j
+                    WHERE j.id = question_drafts.generation_job_id
+                      AND j.tenant_id = (SELECT current_user_tenant_id())
+                      AND (
+                          (SELECT current_user_role()) = 'admin'
+                          OR (
+                              j.created_by = (SELECT auth.uid())
+                              AND (j.course_id IS NULL OR is_teacher_of_course(j.course_id))
+                          )
+                      )
+                )
+            )
+        )
+    );
+
+CREATE POLICY "question_drafts_update" ON question_drafts
+    FOR UPDATE USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                (SELECT current_user_role()) = 'admin'
+                OR EXISTS (
+                    SELECT 1 FROM public.content_generation_jobs j
+                    WHERE j.id = question_drafts.generation_job_id
+                      AND j.created_by = (SELECT auth.uid())
+                      AND (j.course_id IS NULL OR is_teacher_of_course(j.course_id))
+                )
+            )
+        )
+    )
+    WITH CHECK (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND status != 'approved'
+            AND approved_question_id IS NULL
+        )
+    );
+
+CREATE POLICY "question_drafts_delete" ON question_drafts
+    FOR DELETE USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                (SELECT current_user_role()) = 'admin'
+                OR EXISTS (
+                    SELECT 1 FROM public.content_generation_jobs j
+                    WHERE j.id = question_drafts.generation_job_id
+                      AND j.created_by = (SELECT auth.uid())
+                      AND (j.course_id IS NULL OR is_teacher_of_course(j.course_id))
+                )
+            )
+        )
+    );
+
+-- Políticas para Notifications
+CREATE POLICY "notifications_select" ON notifications
+    FOR SELECT USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                student_id = (SELECT auth.uid())
+                OR (SELECT is_teacher_of_student(student_id))
+                OR (SELECT current_user_role()) = 'admin'
+            )
+        )
+    );
+
+CREATE POLICY "notifications_insert" ON notifications
+    FOR INSERT WITH CHECK (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                (SELECT current_user_role()) = 'admin'
+                OR (SELECT is_teacher_of_student(student_id))
+            )
+        )
+    );
+
+CREATE POLICY "notifications_update" ON notifications
+    FOR UPDATE USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                student_id = (SELECT auth.uid())
+                OR (SELECT current_user_role()) = 'admin'
+            )
+        )
+    )
+    WITH CHECK (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (
+                student_id = (SELECT auth.uid())
+                OR (SELECT current_user_role()) = 'admin'
+            )
+        )
+    );
+
+CREATE POLICY "notifications_delete" ON notifications
+    FOR DELETE USING (
+        (SELECT current_user_role()) = 'super_admin'
+        OR (
+            tenant_id = (SELECT current_user_tenant_id())
+            AND (SELECT current_user_role()) = 'admin'
+        )
+    );
+
+-- Restricción de permisos por columna en notificaciones
+REVOKE UPDATE ON notifications FROM authenticated;
+GRANT UPDATE (read_at) ON notifications TO authenticated;
+
+-- ============================================================================
+-- 10. Configuración de Supabase Storage (Bucket Privado teacher-materials)
+-- ============================================================================
+
+-- Inserción de bucket privado
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'teacher-materials',
+    'teacher-materials',
+    false,
+    31457280, -- 30MB
+    ARRAY['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
+)
+ON CONFLICT (id) DO UPDATE SET 
+    public = false,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Políticas RLS sobre storage.objects
+CREATE POLICY "storage_teacher_materials_select" ON storage.objects
+    FOR SELECT USING (
+        bucket_id = 'teacher-materials'
+        AND (
+            (SELECT current_user_role()) = 'super_admin'
+            OR (
+                split_part(name, '/', 1) = (SELECT current_user_tenant_id())::text
+                AND (
+                    (SELECT current_user_role()) = 'admin'
+                    OR (
+                        (SELECT current_user_role()) = 'teacher'
+                        AND auth.uid() = owner
+                    )
+                )
+            )
+        )
+    );
+
+CREATE POLICY "storage_teacher_materials_insert" ON storage.objects
+    FOR INSERT WITH CHECK (
+        bucket_id = 'teacher-materials'
+        AND auth.uid() = owner
+        AND (
+            (SELECT current_user_role()) = 'super_admin'
+            OR (
+                (SELECT current_user_role()) IN ('teacher', 'admin')
+                AND split_part(name, '/', 1) = (SELECT current_user_tenant_id())::text
+            )
+        )
+    );
+
+CREATE POLICY "storage_teacher_materials_update" ON storage.objects
+    FOR UPDATE USING (
+        bucket_id = 'teacher-materials'
+        AND (
+            (SELECT current_user_role()) = 'super_admin'
+            OR (
+                split_part(name, '/', 1) = (SELECT current_user_tenant_id())::text
+                AND (
+                    (SELECT current_user_role()) = 'admin'
+                    OR (
+                        (SELECT current_user_role()) = 'teacher'
+                        AND auth.uid() = owner
+                    )
+                )
+            )
+        )
+    )
+    WITH CHECK (
+        bucket_id = 'teacher-materials'
+        AND (
+            (SELECT current_user_role()) = 'super_admin'
+            OR (
+                split_part(name, '/', 1) = (SELECT current_user_tenant_id())::text
+                AND (
+                    (SELECT current_user_role()) = 'admin'
+                    OR (
+                        (SELECT current_user_role()) = 'teacher'
+                        AND auth.uid() = owner
+                    )
+                )
+            )
+        )
+    );
+
+CREATE POLICY "storage_teacher_materials_delete" ON storage.objects
+    FOR DELETE USING (
+        bucket_id = 'teacher-materials'
+        AND (
+            (SELECT current_user_role()) = 'super_admin'
+            OR (
+                split_part(name, '/', 1) = (SELECT current_user_tenant_id())::text
+                AND (
+                    (SELECT current_user_role()) = 'admin'
+                    OR (
+                        (SELECT current_user_role()) = 'teacher'
+                        AND auth.uid() = owner
+                    )
+                )
+            )
+        )
     );
 ```
