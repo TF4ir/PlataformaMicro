@@ -1,9 +1,5 @@
-"""Question generation service delegating to provider and enforcing validation.
-
-Bridges the LLM generation provider and the domain validation service, ensuring
-no invalid or hallucinated questions proceed toward persistence.
-"""
-
+import logging
+import time
 from typing import Any
 
 from app.content_generation.exceptions import (
@@ -12,7 +8,12 @@ from app.content_generation.exceptions import (
     NoExtractableTextError,
 )
 from app.content_generation.providers.base import QuestionGenerationProvider
+from app.content_generation.providers.cost_calculator import (
+    GenerationTelemetry,
+    calculate_cost,
+)
 from app.content_generation.providers.factory import get_llm_provider
+from app.content_generation.providers.prompts import PROMPT_VERSION
 from app.content_generation.schemas.extracted_document import ExtractedDocument
 from app.content_generation.schemas.generated_questions import (
     GeneratedQuestionDraft,
@@ -21,6 +22,8 @@ from app.content_generation.schemas.generated_questions import (
 from app.content_generation.services.draft_validation_service import (
     DraftValidationService,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class QuestionGenerationService:
@@ -76,8 +79,9 @@ class QuestionGenerationService:
         context.document_type = document.document_type.value
 
         selected_provider = provider or self._provider or get_llm_provider()
-
         extracted_text = self._prepare_extracted_text(document)
+
+        start_time = time.monotonic()
 
         # 1. Generate via provider
         try:
@@ -87,8 +91,42 @@ class QuestionGenerationService:
                 context=context,
             )
         except ContentGenerationError:
+            latency_ms = (time.monotonic() - start_time) * 1000.0
+            telemetry_err = GenerationTelemetry(
+                provider=getattr(selected_provider, "provider_name", "unknown"),
+                model_id=getattr(selected_provider, "model_id", "unknown"),
+                prompt_version=context.prompt_version or PROMPT_VERSION,
+                request_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=latency_ms,
+                retry_count=0,
+                generated_questions=0,
+                valid_questions=0,
+                failed_validations=0,
+                estimated_cost=None,
+                generation_status="provider_error",
+            )
+            logger.error("Content generation provider error: %s", telemetry_err.to_dict())
             raise
         except Exception as e:
+            latency_ms = (time.monotonic() - start_time) * 1000.0
+            telemetry_err = GenerationTelemetry(
+                provider=getattr(selected_provider, "provider_name", "unknown"),
+                model_id=getattr(selected_provider, "model_id", "unknown"),
+                prompt_version=context.prompt_version or PROMPT_VERSION,
+                request_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=latency_ms,
+                retry_count=0,
+                generated_questions=0,
+                valid_questions=0,
+                failed_validations=0,
+                estimated_cost=None,
+                generation_status="provider_error",
+            )
+            logger.error("Content generation provider error: %s", telemetry_err.to_dict())
             raise GenerationProviderError(
                 message_safe="Error en la comunicación o procesamiento de respuesta del proveedor de generación.",
                 code="GENERATION_PROVIDER_ERROR",
@@ -101,10 +139,77 @@ class QuestionGenerationService:
                 details={"job_id": context.job_id},
             )
 
-        # 2. Strictly validate against source document
-        validated_drafts = self._validation_service.validate_drafts(
-            drafts=output.questions,
-            document=document,
+        # 2. Extract token counts if reported
+        in_tokens = None
+        out_tokens = None
+        cached_tokens = 0
+        reasoning_tokens = 0
+        if output.token_usage:
+            in_tokens = output.token_usage.get("prompt_tokens")
+            out_tokens = output.token_usage.get("completion_tokens")
+            cached_tokens = output.token_usage.get("cached_tokens", 0)
+            reasoning_tokens = output.token_usage.get("reasoning_tokens", 0)
+
+        # 3. Strictly validate against source document
+        try:
+            validated_drafts = self._validation_service.validate_drafts(
+                drafts=output.questions,
+                document=document,
+            )
+        except ContentGenerationError as val_err:
+            cost_on_failure = calculate_cost(
+                provider=output.provider,
+                model_id=output.model_id,
+                input_tokens=in_tokens,
+                output_tokens=out_tokens,
+                generated_questions=len(output.questions),
+                valid_questions=0,
+                cached_input_tokens=cached_tokens,
+                reasoning_tokens=reasoning_tokens,
+            )
+            telemetry_failure = GenerationTelemetry(
+                provider=output.provider,
+                model_id=output.model_id,
+                prompt_version=output.prompt_version,
+                request_id=output.request_id,
+                input_tokens=in_tokens,
+                output_tokens=out_tokens,
+                latency_ms=output.latency_ms or (time.monotonic() - start_time) * 1000.0,
+                retry_count=output.retry_count,
+                generated_questions=len(output.questions),
+                valid_questions=0,
+                failed_validations=len(output.questions),
+                estimated_cost=cost_on_failure.total_cost_usd,
+                generation_status="validation_failed",
+            )
+            logger.warning("Content generation validation failed: %s (error: %s)", telemetry_failure.to_dict(), val_err.message_safe)
+            raise
+
+        cost_breakdown = calculate_cost(
+            provider=output.provider,
+            model_id=output.model_id,
+            input_tokens=in_tokens,
+            output_tokens=out_tokens,
+            generated_questions=len(output.questions),
+            valid_questions=len(validated_drafts),
+            cached_input_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
         )
+        telemetry_success = GenerationTelemetry(
+            provider=output.provider,
+            model_id=output.model_id,
+            prompt_version=output.prompt_version,
+            request_id=output.request_id,
+            input_tokens=in_tokens,
+            output_tokens=out_tokens,
+            latency_ms=output.latency_ms or (time.monotonic() - start_time) * 1000.0,
+            retry_count=output.retry_count,
+            generated_questions=len(output.questions),
+            valid_questions=len(validated_drafts),
+            failed_validations=len(output.questions) - len(validated_drafts),
+            estimated_cost=cost_breakdown.total_cost_usd,
+            generation_status="success",
+        )
+        logger.info("Content generation validated: %s", telemetry_success.to_dict())
 
         return validated_drafts

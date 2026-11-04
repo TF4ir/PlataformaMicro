@@ -31,6 +31,10 @@ function LoginFormContent() {
   const redirectParam = searchParams.get("redirect") || undefined;
   const { login } = useRole();
 
+  const isDemoAllowed =
+    process.env.NODE_ENV !== "production" &&
+    process.env.NEXT_PUBLIC_ENABLE_DEMO_AUTH === "true";
+
   // Active role portal selection
   const [selectedRole, setSelectedRole] = useState<UserRole>("student");
   const [mobileTab, setMobileTab] = useState<"login" | "about">("login");
@@ -75,61 +79,63 @@ function LoginFormContent() {
         });
 
       if (authError) {
-        // Fallback verification for demo institutional accounts
-        const isStudentMatch =
-          (cleanIdentifier.includes("lucia") ||
-            cleanIdentifier.includes("est-501")) &&
-          password === "Nexo2026!";
+        // Fallback verification for demo institutional accounts (strictly guarded)
+        if (isDemoAllowed) {
+          const isStudentMatch =
+            (cleanIdentifier.includes("lucia") ||
+              cleanIdentifier.includes("est-501")) &&
+            password === "Nexo2026!";
 
-        const isTeacherMatch =
-          (cleanIdentifier.includes("ana") ||
-            cleanIdentifier.includes("doc-101")) &&
-          password === "Nexo2026!";
+          const isTeacherMatch =
+            (cleanIdentifier.includes("ana") ||
+              cleanIdentifier.includes("doc-101")) &&
+            password === "Nexo2026!";
 
-        if (isStudentMatch) {
-          if (selectedRole !== "student") {
-            setErrorMessage(
-              "Esta cuenta corresponde a una Estudiante. Por favor, selecciona la tarjeta 'Estudiante' para acceder."
+          if (isStudentMatch) {
+            if (selectedRole !== "student") {
+              setErrorMessage(
+                "Esta cuenta corresponde a una Estudiante. Por favor, selecciona la tarjeta 'Estudiante' para acceder."
+              );
+              setIsLoading(false);
+              return;
+            }
+
+            login(
+              "student",
+              {
+                id: "e0000000-0000-0000-0000-000000000001",
+                name: "Lucía Mendoza",
+                email: "lucia.mendoza@nexo.edu.pe",
+                role: "student",
+                code: "EST-501",
+              },
+              redirectParam
             );
-            setIsLoading(false);
             return;
           }
 
-          login(
-            "student",
-            {
-              id: "b0000000-0000-0000-0000-000000000001",
-              name: "Lucía Mendoza",
-              email: "lucia.mendoza@nexo.edu.pe",
-              role: "student",
-              code: "EST-501",
-            },
-            redirectParam
-          );
-          return;
-        }
+          if (isTeacherMatch) {
+            if (selectedRole !== "teacher") {
+              setErrorMessage(
+                "Esta cuenta corresponde a una Docente. Por favor, selecciona la tarjeta 'Docente' para acceder."
+              );
+              setIsLoading(false);
+              return;
+            }
 
-        if (isTeacherMatch) {
-          if (selectedRole !== "teacher") {
-            setErrorMessage(
-              "Esta cuenta corresponde a una Docente. Por favor, selecciona la tarjeta 'Docente' para acceder."
+            login(
+              "teacher",
+              {
+                id: "d0000000-0000-0000-0000-000000000001",
+                name: "Dra. Ana García",
+                email: "ana.garcia@nexo.edu.pe",
+                role: "teacher",
+                code: "DOC-101",
+              },
+              redirectParam
             );
-            setIsLoading(false);
             return;
           }
-
-          login(
-            "teacher",
-            {
-              id: "a0000000-0000-0000-0000-000000000001",
-              name: "Dra. Ana García",
-              email: "ana.garcia@nexo.edu.pe",
-              role: "teacher",
-              code: "DOC-101",
-            },
-            redirectParam
-          );
-          return;
         }
 
         setErrorMessage(
@@ -144,7 +150,7 @@ function LoginFormContent() {
       // Supabase authenticated successfully: verify role privileges in profiles table
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, full_name, role, institutional_code, email")
+        .select("id, full_name, role, student_code")
         .eq("id", authData.user.id)
         .single();
 
@@ -154,8 +160,10 @@ function LoginFormContent() {
       if (userRole !== selectedRole) {
         await supabase.auth.signOut();
         setErrorMessage(
-          `Acceso denegado: Tu perfil institucional está registrado como ${userRole === "teacher" ? "Docente" : "Estudiante"
-          }. Por favor, selecciona la opción '${userRole === "teacher" ? "Docente" : "Estudiante"
+          `Acceso denegado: Tu perfil institucional está registrado como ${
+            userRole === "teacher" ? "Docente" : "Estudiante"
+          }. Por favor, selecciona la opción '${
+            userRole === "teacher" ? "Docente" : "Estudiante"
           }'.`
         );
         setIsLoading(false);
@@ -167,10 +175,10 @@ function LoginFormContent() {
         {
           id: profile?.id || authData.user.id,
           name: profile?.full_name || "Usuario Nexo",
-          email: profile?.email || authData.user.email || "",
+          email: authData.user.email || "",
           role: userRole,
           code:
-            profile?.institutional_code ||
+            profile?.student_code ||
             (userRole === "teacher" ? "DOC-101" : "EST-501"),
         },
         redirectParam
@@ -189,10 +197,10 @@ function LoginFormContent() {
     setSelectedRole(type);
     setErrorMessage(null);
     if (type === "student") {
-      setIdentifier("lucia@nexo.edu");
+      setIdentifier("lucia.mendoza@nexo.edu.pe");
       setPassword("Nexo2026!");
     } else {
-      setIdentifier("ana@nexo.edu");
+      setIdentifier("ana.garcia@nexo.edu.pe");
       setPassword("Nexo2026!");
     }
   };
@@ -464,38 +472,40 @@ function LoginFormContent() {
             </div>
           </div>
 
-          {/* Quick Demo Pre-fill helper */}
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400">
-              ACCESO DEMO 1-CLIC:
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => fillCredentials("student")}
-                className={cn(
-                  "py-1 px-2.5 rounded-lg text-xs font-semibold transition-all border",
-                  selectedRole === "student"
-                    ? "bg-teal-50 border-teal-300 text-teal-800"
-                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                )}
-              >
-                🎓 Lucía
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials("teacher")}
-                className={cn(
-                  "py-1 px-2.5 rounded-lg text-xs font-semibold transition-all border",
-                  selectedRole === "teacher"
-                    ? "bg-amber-50 border-amber-300 text-amber-900"
-                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                )}
-              >
-                👩‍🏫 Ana
-              </button>
+          {/* Quick Demo Pre-fill helper (Strictly hidden in production or when demo auth is disabled) */}
+          {isDemoAllowed && (
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400">
+                ACCESO DEMO 1-CLIC:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fillCredentials("student")}
+                  className={cn(
+                    "py-1 px-2.5 rounded-lg text-xs font-semibold transition-all border",
+                    selectedRole === "student"
+                      ? "bg-teal-50 border-teal-300 text-teal-800"
+                      : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  )}
+                >
+                  🎓 Lucía
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillCredentials("teacher")}
+                  className={cn(
+                    "py-1 px-2.5 rounded-lg text-xs font-semibold transition-all border",
+                    selectedRole === "teacher"
+                      ? "bg-amber-50 border-amber-300 text-amber-900"
+                      : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  )}
+                >
+                  👩‍🏫 Ana
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Error Message Box */}
           {errorMessage && (

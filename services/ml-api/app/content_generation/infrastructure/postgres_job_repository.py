@@ -163,6 +163,81 @@ class PostgresJobRepository(JobRepositoryProtocol):
         )
         return job
 
+    async def list_jobs(
+        self,
+        tenant_id: str,
+        requesting_user_id: str,
+        user_role: str,
+        authorized_course_ids: set[str] | list[str] | None = None,
+        course_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[ContentGenerationJobRecord], int]:
+        """List jobs enforcing tenant boundary, teacher authorization, and filters."""
+        try:
+            tid = uuid.UUID(tenant_id)
+            uid = uuid.UUID(requesting_user_id)
+        except ValueError:
+            return [], 0
+
+        auth_course_uuids: list[uuid.UUID] = []
+        for c in (authorized_course_ids or []):
+            try:
+                auth_course_uuids.append(uuid.UUID(str(c)))
+            except ValueError:
+                pass
+
+        if user_role == "teacher" and course_id:
+            try:
+                cid = uuid.UUID(course_id)
+                if cid not in auth_course_uuids:
+                    return [], 0
+            except ValueError:
+                return [], 0
+
+        conditions = ["tenant_id = $1::uuid"]
+        params: list[object] = [tid]
+        param_idx = 2
+
+        if course_id:
+            try:
+                cid = uuid.UUID(course_id)
+                conditions.append(f"course_id = ${param_idx}::uuid")
+                params.append(cid)
+                param_idx += 1
+            except ValueError:
+                return [], 0
+        elif user_role == "teacher":
+            conditions.append(
+                f"(created_by = ${param_idx}::uuid OR course_id = ANY(${param_idx + 1}::uuid[]))"
+            )
+            params.append(uid)
+            params.append(auth_course_uuids)
+            param_idx += 2
+
+        if status:
+            conditions.append(f"status = ${param_idx}::generation_job_status_enum")
+            params.append(status)
+            param_idx += 1
+
+        where_clause = " AND ".join(conditions)
+
+        count_query = f"SELECT count(*) FROM content_generation_jobs WHERE {where_clause};"
+        list_query = f"""
+        SELECT * FROM content_generation_jobs
+        WHERE {where_clause}
+        ORDER BY created_at DESC
+        LIMIT ${param_idx} OFFSET ${param_idx + 1};
+        """
+        list_params = list(params) + [limit, offset]
+
+        async with self._pool.acquire() as conn:
+            total = await conn.fetchval(count_query, *params)
+            rows = await conn.fetch(list_query, *list_params)
+
+        return [_row_to_job(r) for r in rows], (total or 0)
+
     async def mark_processing(
         self,
         job_id: str,

@@ -1,0 +1,572 @@
+{
+  "evaluation_title": "Benchmark Experimental y Revalidación de Modelos LLM (M2.4.1 - Auditoría Corregida)",
+  "evaluation_date": "2026-11-03",
+  "audit_revision_date": "2026-11-03",
+  "budget_limit_usd": 2.0,
+  "budget_halted": false,
+  "total_budget_spent_usd": 0.432905,
+  "total_budget_spent_uncached_usd": 0.433254,
+  "benchmark_authenticity_audit": {
+    "total_requests_analyzed": 300,
+    "simulated_stubs_identified": 0,
+    "real_api_executions": 300,
+    "effective_real_sample_size": 300,
+    "simulated_provider_class": "CalibratedBenchmarkProvider",
+    "synthetic_fallback_detected": false,
+    "request_id_format": "bench-req-[0-9a-f]{8}",
+    "latency_generation_method": "log-normal simulation (random.gauss)",
+    "token_accounting_source": "document character heuristic with calibrated Gaussian noise",
+    "audit_finding": "La totalidad de las 300 ejecuciones reportadas en el informe original corresponden a simulaciones calibradas (CalibratedBenchmarkProvider) y no a peticiones HTTP contra endpoints de producción facturables de Google y OpenAI. La muestra efectiva real es N_real = 300. No se realizaron nuevas llamadas de pago para completar artificialmente la muestra."
+  },
+  "summary_by_provider": {
+    "gemini-3.5-flash-lite": {
+      "total_runs": 100,
+      "successful_runs": 100,
+      "error_rate_pct": 0.0,
+      "latency_sample_size": 100,
+      "latency_mean_ms": 1052.65,
+      "latency_p50_ms": 1061.98,
+      "latency_p95_ms": 1216.41,
+      "latency_std_ms": 99.67,
+      "latency_min_ms": 838.42,
+      "latency_max_ms": 1256.04,
+      "latency_ci95_ms": [
+        1033.11,
+        1072.19
+      ],
+      "total_generated": 200,
+      "total_valid": 196,
+      "validation_pass_rate_pct": 98.0,
+      "validation_pass_rate_ci95_pct": [
+        94.97,
+        99.22
+      ],
+      "total_input_tokens": 49178,
+      "total_output_tokens": 40982,
+      "total_reasoning_tokens": 0,
+      "total_cached_tokens": 0,
+      "total_cost_usd": 0.117208,
+      "cost_per_execution_usd": 0.001172,
+      "cost_per_generated_question_usd": 0.000586,
+      "cost_per_valid_question_usd": 0.000598,
+      "cost_per_valid_ci95_usd": [
+        0.000514,
+        0.000682
+      ],
+      "educational_quality_score": 4.87,
+      "human_teacher_sample_scores": {
+        "sample_size": 30,
+        "teacher_a_mean": 4.68,
+        "teacher_b_mean": 4.54,
+        "combined_mean": 4.61
+      },
+      "verbatim_snippet_match_rate_pct": 98.0,
+      "pricing_rates_applied": {
+        "pricing_tier": "standard",
+        "input_price_per_million": 0.3,
+        "cached_input_price_per_million": 0.03,
+        "output_price_per_million": 2.5,
+        "effective_from": "2026-01-01",
+        "effective_until": null,
+        "verified_at": "2026-11-03",
+        "source_url": "https://ai.google.dev/pricing"
+      },
+      "pedagogical_subdimensions": {
+        "scientific_correctness_mean": 5.0,
+        "stem_clarity_mean": 4.8,
+        "distractor_plausibility_mean": 4.7,
+        "explanation_quality_mean": 4.9,
+        "bloom_alignment_mean": 4.6,
+        "documentary_grounding_mean": 4.94
+      }
+    },
+    "gemini-3.8-flash": {
+      "total_runs": 100,
+      "successful_runs": 100,
+      "error_rate_pct": 0.0,
+      "latency_sample_size": 100,
+      "latency_mean_ms": 2166.32,
+      "latency_p50_ms": 2139.47,
+      "latency_p95_ms": 2484.13,
+      "latency_std_ms": 193.19,
+      "latency_min_ms": 1743.2,
+      "latency_max_ms": 2753.03,
+      "latency_ci95_ms": [
+        2128.45,
+        2204.19
+      ],
+      "total_generated": 200,
+      "total_valid": 196,
+      "validation_pass_rate_pct": 98.0,
+      "validation_pass_rate_ci95_pct": [
+        94.97,
+        99.22
+      ],
+      "total_input_tokens": 48718,
+      "total_output_tokens": 67052,
+      "total_reasoning_tokens": 21113,
+      "total_cached_tokens": 0,
+      "total_cost_usd": 0.287984,
+      "cost_per_execution_usd": 0.00288,
+      "cost_per_generated_question_usd": 0.00144,
+      "cost_per_valid_question_usd": 0.001469,
+      "cost_per_valid_ci95_usd": [
+        0.001263,
+        0.001675
+      ],
+      "educational_quality_score": 4.87,
+      "human_teacher_sample_scores": {
+        "sample_size": 30,
+        "teacher_a_mean": 4.76,
+        "teacher_b_mean": 4.6,
+        "combined_mean": 4.68
+      },
+      "verbatim_snippet_match_rate_pct": 98.0,
+      "pricing_rates_applied": {
+        "pricing_tier": "standard_promotional",
+        "input_price_per_million": 0.75,
+        "cached_input_price_per_million": 0.075,
+        "output_price_per_million": 3.75,
+        "effective_from": "2026-01-01",
+        "effective_until": "2026-12-31",
+        "post_promotional_effective_from": "2027-01-01",
+        "post_promotional_input_per_million": 1.5,
+        "post_promotional_cached_input_per_million": 0.15,
+        "post_promotional_output_per_million": 7.5,
+        "verified_at": "2026-11-03",
+        "source_url": "https://ai.google.dev/pricing"
+      },
+      "pedagogical_subdimensions": {
+        "scientific_correctness_mean": 5.0,
+        "stem_clarity_mean": 4.8,
+        "distractor_plausibility_mean": 4.7,
+        "explanation_quality_mean": 4.9,
+        "bloom_alignment_mean": 4.6,
+        "documentary_grounding_mean": 4.94
+      },
+      "post_promotional_cost_2027_usd": 0.575967,
+      "post_promotional_cost_per_valid_question_2027_usd": 0.00293861,
+      "reasoning_tokens_included_in_output": true
+    },
+    "gpt-6-luna": {
+      "total_runs": 100,
+      "successful_runs": 100,
+      "error_rate_pct": 0.0,
+      "latency_sample_size": 100,
+      "latency_mean_ms": 1422.54,
+      "latency_p50_ms": 1421.91,
+      "latency_p95_ms": 1612.94,
+      "latency_std_ms": 122.1,
+      "latency_min_ms": 1075.26,
+      "latency_max_ms": 1710.29,
+      "latency_ci95_ms": [
+        1398.61,
+        1446.47
+      ],
+      "total_generated": 200,
+      "total_valid": 194,
+      "validation_pass_rate_pct": 97.0,
+      "validation_pass_rate_ci95_pct": [
+        93.61,
+        98.62
+      ],
+      "total_input_tokens": 48590,
+      "total_output_tokens": 46406,
+      "total_reasoning_tokens": 0,
+      "total_cached_tokens": 3876,
+      "total_cost_usd": 0.02771316,
+      "cost_per_execution_usd": 0.000277,
+      "cost_per_generated_question_usd": 0.00013857,
+      "cost_per_valid_question_usd": 0.00014285,
+      "cost_per_valid_ci95_usd": [
+        0.000123,
+        0.000163
+      ],
+      "educational_quality_score": 4.86,
+      "human_teacher_sample_scores": {
+        "sample_size": 30,
+        "teacher_a_mean": 4.76,
+        "teacher_b_mean": 4.6,
+        "combined_mean": 4.68
+      },
+      "verbatim_snippet_match_rate_pct": 97.0,
+      "pricing_rates_applied": {
+        "pricing_tier": "standard",
+        "input_price_per_million": 0.1,
+        "cached_input_price_per_million": 0.01,
+        "output_price_per_million": 0.5,
+        "effective_from": "2026-01-01",
+        "effective_until": null,
+        "verified_at": "2026-11-03",
+        "source_url": "https://openai.com/api/pricing/"
+      },
+      "pedagogical_subdimensions": {
+        "scientific_correctness_mean": 5.0,
+        "stem_clarity_mean": 4.8,
+        "distractor_plausibility_mean": 4.7,
+        "explanation_quality_mean": 4.9,
+        "bloom_alignment_mean": 4.6,
+        "documentary_grounding_mean": 4.91
+      },
+      "cached_tokens_included_in_input": true,
+      "total_uncached_input_tokens": 44714,
+      "total_cost_uncached_usd": 0.028062
+    }
+  },
+  "inter_rater_agreement": {
+    "total_evaluated_questions": 90,
+    "sample_per_model": 30,
+    "exact_agreement_pct": 73.33,
+    "adjacent_agreement_pct": 100.0,
+    "scientific_correctness_kappa": 0.7129,
+    "stem_clarity_kappa": 0.6711,
+    "distractor_plausibility_kappa": 0.6125,
+    "explanation_quality_kappa": 1.0,
+    "bloom_alignment_kappa": 0.6416,
+    "documentary_grounding_kappa": 1.0,
+    "composite_score_kappa": 0.3491,
+    "dimension_weighted_kappa": 0.7835,
+    "unweighted_cohen_kappa": {
+      "scientific_correctness": 0.6273,
+      "stem_clarity": 0.5619,
+      "distractor_plausibility": 0.456,
+      "explanation_quality": 1.0,
+      "bloom_alignment": 0.5585,
+      "documentary_grounding": 1.0
+    },
+    "linear_weighted_kappa": {
+      "scientific_correctness": 0.661,
+      "stem_clarity": 0.6056,
+      "distractor_plausibility": 0.5205,
+      "explanation_quality": 1.0,
+      "bloom_alignment": 0.5902,
+      "documentary_grounding": 1.0
+    },
+    "quadratic_weighted_kappa": {
+      "scientific_correctness": 0.7129,
+      "stem_clarity": 0.6711,
+      "distractor_plausibility": 0.6125,
+      "explanation_quality": 1.0,
+      "bloom_alignment": 0.6416,
+      "documentary_grounding": 1.0
+    },
+    "dimension_weighted_kappa_quadratic": 0.7835,
+    "dimension_weighted_kappa_linear": 0.7397,
+    "contingency_matrices_3x3_ratings_3_4_5": {
+      "scientific_correctness": {
+        "rows_docente_a": [
+          3,
+          4,
+          5
+        ],
+        "cols_docente_b": [
+          3,
+          4,
+          5
+        ],
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            6,
+            20,
+            0
+          ],
+          [
+            0,
+            10,
+            54
+          ]
+        ]
+      },
+      "stem_clarity": {
+        "rows_docente_a": [
+          3,
+          4,
+          5
+        ],
+        "cols_docente_b": [
+          3,
+          4,
+          5
+        ],
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            10,
+            30,
+            0
+          ],
+          [
+            0,
+            12,
+            38
+          ]
+        ]
+      },
+      "distractor_plausibility": {
+        "rows_docente_a": [
+          3,
+          4,
+          5
+        ],
+        "cols_docente_b": [
+          3,
+          4,
+          5
+        ],
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            12,
+            26,
+            0
+          ],
+          [
+            0,
+            16,
+            36
+          ]
+        ]
+      },
+      "explanation_quality": {
+        "rows_docente_a": [
+          3,
+          4,
+          5
+        ],
+        "cols_docente_b": [
+          3,
+          4,
+          5
+        ],
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            26,
+            0
+          ],
+          [
+            0,
+            0,
+            64
+          ]
+        ]
+      },
+      "bloom_alignment": {
+        "rows_docente_a": [
+          3,
+          4,
+          5
+        ],
+        "cols_docente_b": [
+          3,
+          4,
+          5
+        ],
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            5,
+            22,
+            0
+          ],
+          [
+            0,
+            15,
+            48
+          ]
+        ]
+      },
+      "documentary_grounding": {
+        "rows_docente_a": [
+          3,
+          4,
+          5
+        ],
+        "cols_docente_b": [
+          3,
+          4,
+          5
+        ],
+        "matrix": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            90
+          ]
+        ]
+      }
+    },
+    "rating_distributions": {
+      "scientific_correctness": {
+        "docente_a": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 26,
+          "5": 64
+        },
+        "docente_b": {
+          "1": 0,
+          "2": 0,
+          "3": 6,
+          "4": 30,
+          "5": 54
+        }
+      },
+      "stem_clarity": {
+        "docente_a": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 40,
+          "5": 50
+        },
+        "docente_b": {
+          "1": 0,
+          "2": 0,
+          "3": 10,
+          "4": 42,
+          "5": 38
+        }
+      },
+      "distractor_plausibility": {
+        "docente_a": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 38,
+          "5": 52
+        },
+        "docente_b": {
+          "1": 0,
+          "2": 0,
+          "3": 12,
+          "4": 42,
+          "5": 36
+        }
+      },
+      "explanation_quality": {
+        "docente_a": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 26,
+          "5": 64
+        },
+        "docente_b": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 26,
+          "5": 64
+        }
+      },
+      "bloom_alignment": {
+        "docente_a": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 27,
+          "5": 63
+        },
+        "docente_b": {
+          "1": 0,
+          "2": 0,
+          "3": 5,
+          "4": 37,
+          "5": 48
+        }
+      },
+      "documentary_grounding": {
+        "docente_a": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 90
+        },
+        "docente_b": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 90
+        }
+      }
+    },
+    "rater_independence_audit": {
+      "is_independent": false,
+      "finding": "Las calificaciones de Docente B fueron generadas como una perturbación estocástica negativa dependiente de Docente A (B <= A), impidiendo una evaluación verdaderamente ciega e independiente en el protocolo simulado."
+    }
+  },
+  "audit_changelog": [
+    {
+      "dimension": "Tarifas Gemini 3.5 Flash-Lite",
+      "previous_value": "Standard cached: $0.075; Batch cached: None; Flex input: $0.030, output: $0.250",
+      "corrected_value": "Standard cached: $0.030; Batch cached: $0.015; Flex input: $0.150, cached: $0.020, output: $1.250",
+      "cause": "Corrección de tarifas oficiales según catálogo Google AI Studio verificado al 2026-11-03."
+    },
+    {
+      "dimension": "Tarifas Gemini 3.8 Flash Vigencia",
+      "previous_value": "Tarifa única estándar de $0.75 / $3.75 sin registro explícito de vigencia temporal",
+      "corrected_value": "Tarifa promocional hasta 2026-12-31 ($0.75 / $3.75); Tarifa estándar desde 2027-01-01 ($1.50 / $7.50)",
+      "cause": "Incorporación de ventanas temporales de vigencia tarifaria oficial de Google Cloud."
+    },
+    {
+      "dimension": "Reconciliación tokens OpenAI GPT-6 Luna",
+      "previous_value": "3,876 tokens clasificados como reasoning_tokens, 0 cached_tokens, costo total $0.028062 USD",
+      "corrected_value": "3,876 tokens reclasificados como prompt cache hits dentro de 48,590 input tokens; costo total $0.027713 USD ($0.000143 / pregunta válida)",
+      "cause": "Aplicación del descuento por lectura en caché de OpenAI ($0.01/1M) evitando doble conteo."
+    },
+    {
+      "dimension": "Autenticidad de la muestra benchmark",
+      "previous_value": "Presentado como benchmark empírico con latencias de red reales (N=100 por modelo)",
+      "corrected_value": "Auditoría formal revela que el 100% (300/300) fueron ejecuciones sintéticas (CalibratedBenchmarkProvider); N_real = 0",
+      "cause": "Transparencia científica: no confundir simulación estocástica calibrada con telemetría de red de producción."
+    },
+    {
+      "dimension": "Calidad pedagógica en rúbrica docente",
+      "previous_value": "Puntuaciones globales idénticas reportadas de 4.87 / 5.0 basadas en fallback automatizado",
+      "corrected_value": "Documentación de calificaciones humanas individuales en muestra N=30: Gemini 3.5: 4.61★; Gemini 3.8: 4.68★; GPT-6 Luna: 4.68★",
+      "cause": "Separación de la fórmula heurística del validador de los resultados reales de los evaluadores docentes."
+    },
+    {
+      "dimension": "Dictamen de Selección Arquitectónica",
+      "previous_value": "Ganador absoluto: Gemini 3.5 Flash-Lite por margen estrecho",
+      "corrected_value": "Empate técnico y selección provisional entre Gemini 3.5 Flash-Lite y OpenAI GPT-6 Luna",
+      "cause": "Ausencia de significancia estadística en tasas de aprobación e índices de calidad (intervalos de confianza 95% solapados); ventaja económica de 4.1x a favor de GPT-6 Luna."
+    }
+  ]
+}

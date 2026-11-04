@@ -34,9 +34,9 @@ def get_llm_provider(
         UnsupportedProviderError: If the requested provider is unknown or not supported in this milestone.
     """
     env_provider = os.getenv("LLM_PROVIDER") or "mock"
-    env_model = os.getenv("LLM_MODEL_ID") or "mock-v1"
+    env_model = os.getenv("LLM_MODEL_ID") or None
     resolved_provider = (provider_name or env_provider).strip().lower()
-    resolved_model_id = (model_id or env_model).strip()
+    resolved_model_id = (model_id or env_model or "").strip() or None
 
     if resolved_provider == "mock":
         behavior_mode_val = kwargs.get("behavior_mode", MockBehaviorMode.VALID)
@@ -46,14 +46,37 @@ def get_llm_provider(
             behavior_mode = behavior_mode_val
 
         custom_questions = kwargs.get("custom_questions", None)
+        token_usage = kwargs.get("token_usage", None)
+        simulated_latency_seconds = float(kwargs.get("simulated_latency_seconds", 0.0))
 
         return MockQuestionGenerationProvider(
-            model_id=resolved_model_id,
+            model_id=resolved_model_id or "mock-v1",
             behavior_mode=behavior_mode,
             custom_questions=custom_questions,
+            token_usage=token_usage,
+            simulated_latency_seconds=simulated_latency_seconds,
         )
 
-    # In Milestone M2.2, external LLM providers (e.g. vertex, openai, anthropic) are not implemented
+    if resolved_provider in ("gemini", "google", "google_gemini"):
+        from app.content_generation.providers.gemini_provider import (
+            GoogleGeminiQuestionGenerationProvider,
+        )
+
+        return GoogleGeminiQuestionGenerationProvider(
+            model_id=resolved_model_id,
+            **kwargs,
+        )
+
+    if resolved_provider == "openai":
+        from app.content_generation.providers.openai_provider import (
+            OpenAIQuestionGenerationProvider,
+        )
+
+        return OpenAIQuestionGenerationProvider(
+            model_id=resolved_model_id,
+            **kwargs,
+        )
+
     raise UnsupportedProviderError(
         f"El proveedor LLM '{resolved_provider}' no está implementado o no está configurado en este entorno.",
         details={"provider": resolved_provider, "model_id": resolved_model_id},

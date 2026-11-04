@@ -415,6 +415,18 @@ class LLMGenerationOutput(BaseModel):
         default="stop",
         description="Motivo de finalización del modelo",
     )
+    request_id: str | None = Field(
+        default=None,
+        description="Identificador de la petición retornado por el proveedor (opcional)",
+    )
+    latency_ms: float | None = Field(
+        default=None,
+        description="Latencia total de la llamada en milisegundos (opcional)",
+    )
+    retry_count: int = Field(
+        default=0,
+        description="Número de reintentos realizados ante errores transitorios",
+    )
 
 
 @dataclass
@@ -440,6 +452,7 @@ class QuestionDraftRecord:
     created_at: datetime | None = None
     updated_at: datetime | None = None
     content_hash: str | None = None
+    rejection_reason: str | None = None
 
 
 def compute_draft_content_hash(

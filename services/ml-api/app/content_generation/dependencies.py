@@ -39,6 +39,9 @@ from app.content_generation.services.extraction_service import (
 from app.content_generation.services.generation_orchestrator import (
     GenerationOrchestrator,
 )
+from app.content_generation.services.publication_service import (
+    DraftPublicationService,
+)
 from app.content_generation.services.question_generation_service import (
     QuestionGenerationService,
 )
@@ -48,6 +51,7 @@ from app.core.config import settings
 _IN_MEMORY_JOB_REPO = InMemoryJobRepository()
 _IN_MEMORY_DRAFT_REPO = InMemoryDraftRepository()
 _IN_MEMORY_STORAGE_CLIENT = InMemoryStorageClient()
+_IN_MEMORY_PUBLICATION_SERVICE: DraftPublicationService | None = None
 
 
 def get_in_memory_job_repository() -> InMemoryJobRepository:
@@ -137,4 +141,31 @@ async def get_generation_orchestrator(
         generation_service=generation_service,
         draft_repository=draft_repo,
         unit_of_work=uow,
+    )
+
+
+def get_in_memory_publication_service() -> DraftPublicationService:
+    """Return in-memory publication service for testing."""
+    global _IN_MEMORY_PUBLICATION_SERVICE
+    if _IN_MEMORY_PUBLICATION_SERVICE is None:
+        _IN_MEMORY_PUBLICATION_SERVICE = DraftPublicationService(
+            pool=None,
+            job_repository=get_in_memory_job_repository(),
+            draft_repository=get_in_memory_draft_repository(),
+        )
+    return _IN_MEMORY_PUBLICATION_SERVICE
+
+
+async def get_publication_service(
+    pool: Annotated[asyncpg.Pool | None, Depends(get_database_pool)],
+    job_repo: Annotated[JobRepositoryProtocol, Depends(get_job_repository)],
+    draft_repo: Annotated[DraftRepositoryProtocol, Depends(get_draft_repository)],
+) -> DraftPublicationService:
+    """Dependency providing DraftPublicationService."""
+    if settings.REPOSITORY_BACKEND == "memory" or pool is None:
+        return get_in_memory_publication_service()
+    return DraftPublicationService(
+        pool=pool,
+        job_repository=job_repo,
+        draft_repository=draft_repo,
     )

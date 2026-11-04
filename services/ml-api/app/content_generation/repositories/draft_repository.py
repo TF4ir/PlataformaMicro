@@ -8,11 +8,14 @@ Provides draft quarantine persistence adhering to ADR-0004 and the PostgreSQL sc
 
 import uuid
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.content_generation.exceptions import (
+    ConcurrencyConflictError,
     DraftAlreadyReviewedError,
+    DraftNotFoundError,
     EmptyDraftsError,
+    InvalidJobStateTransitionError,
 )
 from app.content_generation.schemas.generated_questions import (
     GeneratedQuestionDraft,
@@ -37,8 +40,11 @@ class DraftRepositoryProtocol(Protocol):
         self,
         job_id: str,
         tenant_id: str,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[QuestionDraftRecord]:
-        """Retrieve all drafts associated with a specific generation job for a tenant."""
+        """Retrieve drafts associated with a specific generation job for a tenant."""
         ...
 
     async def get_draft_by_id(
@@ -47,6 +53,32 @@ class DraftRepositoryProtocol(Protocol):
         tenant_id: str,
     ) -> QuestionDraftRecord | None:
         """Retrieve a specific draft by its ID ensuring tenant isolation."""
+        ...
+
+    async def update_draft(
+        self,
+        draft_id: str,
+        tenant_id: str,
+        reviewed_by: str,
+        question_text: str | None = None,
+        options: list[dict[str, Any]] | None = None,
+        explanation: str | None = None,
+        difficulty: float | None = None,
+        bloom_taxonomy: str | None = None,
+        knowledge_component_id: str | None = None,
+        expected_updated_at: datetime | None = None,
+    ) -> QuestionDraftRecord:
+        """Update an existing draft in 'draft' or 'edited' status, transitioning it to 'edited'."""
+        ...
+
+    async def reject_draft(
+        self,
+        draft_id: str,
+        tenant_id: str,
+        reviewed_by: str,
+        rejection_reason: str | None = None,
+    ) -> QuestionDraftRecord:
+        """Reject a draft, setting status to 'rejected' and recording audit metadata."""
         ...
 
     async def delete_unreviewed_drafts_for_job(
@@ -80,15 +112,100 @@ class InMemoryDraftRepository:
         self,
         job_id: str,
         tenant_id: str,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[QuestionDraftRecord]:
-        """Retrieve all drafts for a given job and tenant, sorted by creation time."""
+        """Retrieve drafts for a given job and tenant, sorted by creation time."""
         results = [
             draft
             for draft in self._drafts.values()
-            if draft.generation_job_id == job_id and draft.tenant_id == tenant_id
+            if draft.generation_job_id == job_id
+            and draft.tenant_id == tenant_id
+            and (status is None or draft.status == status)
         ]
         results.sort(key=lambda d: d.created_at or datetime.min.replace(tzinfo=UTC))
-        return results
+        start = offset or 0
+        if limit is not None:
+            return results[start : start + limit]
+        return results[start:]
+
+    async def update_draft(
+        self,
+        draft_id: str,
+        tenant_id: str,
+        reviewed_by: str,
+        question_text: str | None = None,
+        options: list[dict[str, Any]] | None = None,
+        explanation: str | None = None,
+        difficulty: float | None = None,
+        bloom_taxonomy: str | None = None,
+        knowledge_component_id: str | None = None,
+        expected_updated_at: datetime | None = None,
+    ) -> QuestionDraftRecord:
+        """Update an existing draft in 'draft' or 'edited' status in memory."""
+        draft = await self.get_draft_by_id(draft_id, tenant_id)
+        if not draft:
+            raise DraftNotFoundError(f"El borrador con ID {draft_id} no fue encontrado.")
+
+        if draft.status in ("approved", "rejected"):
+            raise InvalidJobStateTransitionError(
+                f"No se pueden modificar borradores en estado '{draft.status}'."
+            )
+
+        if (
+            expected_updated_at
+            and draft.updated_at
+            and abs((draft.updated_at - expected_updated_at).total_seconds()) > 1.0
+        ):
+            raise ConcurrencyConflictError(
+                "El borrador fue modificado por otro usuario desde su última lectura."
+            )
+
+        if question_text is not None:
+            draft.question_text = question_text
+        if options is not None:
+            draft.options = options
+        if explanation is not None:
+            draft.explanation = explanation
+        if difficulty is not None:
+            draft.suggested_difficulty = difficulty
+        if bloom_taxonomy is not None:
+            draft.suggested_bloom_level = bloom_taxonomy
+        if knowledge_component_id is not None:
+            draft.knowledge_component_id = knowledge_component_id
+
+        draft.status = "edited"
+        draft.reviewed_by = reviewed_by
+        draft.updated_at = datetime.now(UTC)
+        return draft
+
+    async def reject_draft(
+        self,
+        draft_id: str,
+        tenant_id: str,
+        reviewed_by: str,
+        rejection_reason: str | None = None,
+    ) -> QuestionDraftRecord:
+        """Reject a draft in memory."""
+        draft = await self.get_draft_by_id(draft_id, tenant_id)
+        if not draft:
+            raise DraftNotFoundError(f"El borrador con ID {draft_id} no fue encontrado.")
+
+        if draft.status == "approved":
+            raise InvalidJobStateTransitionError(
+                "No se puede descartar un borrador que ya fue aprobado y publicado."
+            )
+
+        if draft.status == "rejected":
+            return draft
+
+        draft.status = "rejected"
+        draft.reviewed_by = reviewed_by
+        draft.reviewed_at = datetime.now(UTC)
+        draft.rejection_reason = rejection_reason
+        draft.updated_at = datetime.now(UTC)
+        return draft
 
     async def delete_unreviewed_drafts_for_job(
         self,

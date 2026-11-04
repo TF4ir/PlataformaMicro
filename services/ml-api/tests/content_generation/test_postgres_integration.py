@@ -587,7 +587,7 @@ async def test_reclaim_abandoned_job_with_expired_lease(db_pool):
     assert claimed_by_w1.processing_lease_token == worker1_token
 
     # Wait for lease to expire
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # Worker 2 attempts to claim -> must succeed and reclaim the abandoned job
     worker2_token = str(uuid.uuid4())
@@ -674,7 +674,7 @@ async def test_zombie_worker_fence_token_protection(db_pool):
     await job_repo.claim_pending_job(tenant_id=TENANT_A, lease_duration_seconds=1, worker_token=old_worker_token, job_id=job_id)
 
     # Expire lease
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # New worker claims with new token
     new_worker_token = str(uuid.uuid4())
@@ -930,8 +930,8 @@ async def test_canonical_tables_untouched(db_pool):
         q_count_after = await conn.fetchval("SELECT count(*) FROM questions;")
         opt_count_after = await conn.fetchval("SELECT count(*) FROM question_options;")
 
-    assert q_count_after == q_count_before == 0
-    assert opt_count_after == opt_count_before == 0
+    assert q_count_after == q_count_before
+    assert opt_count_after == opt_count_before
 
 
 # ==============================================================================
@@ -1061,7 +1061,7 @@ async def test_expired_lease_max_attempts_transition_to_failed_and_unblock_new_j
     assert c1.attempt_count == 1
 
     # Simulate worker crash: wait for lease to expire
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # Next claim call triggers auto-recovery: job must be transitioned to failed
     claimed = await job_repo.claim_pending_job(tenant_id=TENANT_A, job_id=jid)

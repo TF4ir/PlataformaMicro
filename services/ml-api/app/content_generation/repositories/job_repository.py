@@ -71,6 +71,20 @@ class JobRepositoryProtocol(Protocol):
         """Fetch job record by ID ensuring tenant isolation and user permissions."""
         ...
 
+    async def list_jobs(
+        self,
+        tenant_id: str,
+        requesting_user_id: str,
+        user_role: str,
+        authorized_course_ids: set[str] | list[str] | None = None,
+        course_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[ContentGenerationJobRecord], int]:
+        """List content generation jobs for the requesting user/tenant with optional filters and pagination."""
+        ...
+
     async def mark_processing(
         self,
         job_id: str,
@@ -227,6 +241,41 @@ class InMemoryJobRepository:
             authorized_course_ids=authorized_course_ids,
         )
         return job
+
+    async def list_jobs(
+        self,
+        tenant_id: str,
+        requesting_user_id: str,
+        user_role: str,
+        authorized_course_ids: set[str] | list[str] | None = None,
+        course_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[ContentGenerationJobRecord], int]:
+        """List content generation jobs for the requesting user/tenant."""
+        auth_courses = set(authorized_course_ids or [])
+        candidates: list[ContentGenerationJobRecord] = []
+        for j in self._jobs.values():
+            if j.tenant_id != tenant_id:
+                continue
+            if course_id and j.course_id != course_id:
+                continue
+            if status and j.status != status:
+                continue
+            if user_role == "teacher":
+                if course_id:
+                    if course_id not in auth_courses:
+                        continue
+                else:
+                    if j.created_by != requesting_user_id and (not j.course_id or j.course_id not in auth_courses):
+                        continue
+            candidates.append(j)
+
+        now = datetime.now(UTC)
+        candidates.sort(key=lambda x: x.created_at or now, reverse=True)
+        total = len(candidates)
+        return candidates[offset : offset + limit], total
 
     async def mark_processing(
         self,

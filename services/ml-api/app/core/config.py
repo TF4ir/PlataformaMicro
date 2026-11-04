@@ -14,11 +14,20 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@127.0.0.1:5432/plataformamicro_test"
     SUPABASE_URL: str = "http://localhost:54321"
     SUPABASE_SERVICE_ROLE_KEY: str = ""
-    SUPABASE_JWT_SECRET: str = ""
+    SUPABASE_JWT_SECRET: str = "super-secret-jwt-token-with-at-least-32-characters-long"
     DEFAULT_LEASE_DURATION_SECONDS: int = 300
     MAX_JOB_ATTEMPTS: int = 3
     REPOSITORY_BACKEND: str = "postgres"  # "postgres" | "memory"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://plataformamicro.edu.pe"
+
+    # LLM Provider Configuration
+    LLM_PROVIDER: str = "mock"  # "mock" | "gemini" | "openai"
+    LLM_MODEL_ID: str = ""
+    GEMINI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    LLM_TIMEOUT_SECONDS: float = 30.0
+    LLM_MAX_RETRIES: int = 3
+    LLM_MAX_OUTPUT_TOKENS: int = 4096
 
 
 settings = Settings()

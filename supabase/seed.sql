@@ -28,7 +28,9 @@ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'auth') THEN
         INSERT INTO auth.users (
             id, instance_id, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, role, aud, created_at, updated_at
+            raw_app_meta_data, raw_user_meta_data, role, aud, created_at, updated_at,
+            confirmation_token, recovery_token, email_change_token_new, email_change,
+            email_change_token_current, phone_change, phone_change_token, reauthentication_token
         ) VALUES (
             teacher_user_id,
             '00000000-0000-0000-0000-000000000000',
@@ -40,13 +42,16 @@ BEGIN
             'authenticated',
             'authenticated',
             now(),
-            now()
+            now(),
+            '', '', '', '', '', '', '', ''
         ) ON CONFLICT (id) DO NOTHING;
 
         -- Usuario Estudiante en auth.users
         INSERT INTO auth.users (
             id, instance_id, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, role, aud, created_at, updated_at
+            raw_app_meta_data, raw_user_meta_data, role, aud, created_at, updated_at,
+            confirmation_token, recovery_token, email_change_token_new, email_change,
+            email_change_token_current, phone_change, phone_change_token, reauthentication_token
         ) VALUES (
             student_user_id,
             '00000000-0000-0000-0000-000000000000',
@@ -58,7 +63,8 @@ BEGIN
             'authenticated',
             'authenticated',
             now(),
-            now()
+            now(),
+            '', '', '', '', '', '', '', ''
         ) ON CONFLICT (id) DO NOTHING;
     END IF;
 

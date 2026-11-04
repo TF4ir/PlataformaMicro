@@ -4,6 +4,7 @@ Produces controlled generation outputs from extracted documents without any netw
 supporting exhaustive verification of validation pipelines and failure scenarios.
 """
 
+import asyncio
 from enum import StrEnum
 from typing import Any
 
@@ -52,10 +53,14 @@ class MockQuestionGenerationProvider:
         model_id: str = "mock-v1",
         behavior_mode: MockBehaviorMode = MockBehaviorMode.VALID,
         custom_questions: list[GeneratedQuestionDraft] | None = None,
+        token_usage: dict[str, int] | None = None,
+        simulated_latency_seconds: float = 0.0,
     ) -> None:
         self.model_id = model_id
         self.behavior_mode = behavior_mode
         self._custom_questions = custom_questions
+        self._token_usage = token_usage
+        self._simulated_latency_seconds = simulated_latency_seconds
 
     def _extract_snippets_from_unit(self, unit: ExtractedUnit) -> str:
         """Extract a deterministic clean substring from unit text to use as proven snippet."""
@@ -470,6 +475,9 @@ class MockQuestionGenerationProvider:
                 questions=[q],
             )
 
+        if self._simulated_latency_seconds > 0:
+            await asyncio.sleep(self._simulated_latency_seconds)
+
         # Standard valid generation
         questions = self._generate_valid_drafts(context)
         return LLMGenerationOutput(
@@ -477,6 +485,7 @@ class MockQuestionGenerationProvider:
             model_id=self.model_id,
             prompt_version=context.prompt_version,
             questions=questions,
+            token_usage=self._token_usage,
             finish_reason="stop",
         )
 

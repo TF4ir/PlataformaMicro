@@ -1,0 +1,38 @@
+{
+  "gemini": {
+    "total_runs": 2,
+    "successful_runs": 2,
+    "error_rate_pct": 0.0,
+    "latency_mean_ms": 1155.37,
+    "latency_p50_ms": 1155.37,
+    "latency_p95_ms": 1162.67,
+    "total_generated": 6,
+    "total_valid": 6,
+    "validation_pass_rate_pct": 100.0,
+    "educational_quality_score": 4.88,
+    "verbatim_snippet_match_rate_pct": 100.0,
+    "total_input_tokens": 2480,
+    "total_output_tokens": 1160,
+    "total_cost_usd": 0.000534,
+    "cost_per_generated_question_usd": 8.9e-05,
+    "cost_per_valid_question_usd": 8.9e-05
+  },
+  "openai": {
+    "total_runs": 2,
+    "successful_runs": 2,
+    "error_rate_pct": 0.0,
+    "latency_mean_ms": 1782.97,
+    "latency_p50_ms": 1782.97,
+    "latency_p95_ms": 1784.92,
+    "total_generated": 6,
+    "total_valid": 6,
+    "validation_pass_rate_pct": 100.0,
+    "educational_quality_score": 4.88,
+    "verbatim_snippet_match_rate_pct": 100.0,
+    "total_input_tokens": 2560,
+    "total_output_tokens": 1240,
+    "total_cost_usd": 0.001128,
+    "cost_per_generated_question_usd": 0.000188,
+    "cost_per_valid_question_usd": 0.000188
+  }
+}

@@ -15,6 +15,7 @@ import {
   LogOut,
   X,
   ShieldCheck,
+  ClipboardCheck,
 } from "lucide-react";
 import { useRole } from "@/lib/role-context";
 import { mockStudent, mockTeacher } from "@/lib/mock-data";
@@ -35,6 +36,7 @@ export function Sidebar() {
   const teacherNavItems = [
     { label: "Dashboard", href: "/teacher/dashboard", icon: Home },
     { label: "Cursos", href: "/teacher/courses", icon: BookOpen },
+    { label: "Cuestionarios", href: "/teacher/activities", icon: ClipboardCheck },
     { label: "Banco de preguntas", href: "/teacher/questions", icon: FileQuestion },
     { label: "Estudiantes", href: "/teacher/students", icon: Users },
     { label: "Reportes", href: "/teacher/reports", icon: TrendingUp },

@@ -10,7 +10,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.v1.activities import router as activities_router
 from app.api.v1.content_generation import router as content_generation_router
+from app.api.v1.learning import router as learning_router
+from app.api.v1.recommendations import router as recommendations_router
 from app.content_generation.exceptions import ContentGenerationError
 from app.content_generation.infrastructure.database import (
     close_db_pool,
@@ -123,3 +126,6 @@ async def warmup() -> dict[str, str]:
 
 # Register API v1 Routers
 app.include_router(content_generation_router, prefix="/api/v1")
+app.include_router(activities_router, prefix="/api/v1")
+app.include_router(learning_router, prefix="/api/v1")
+app.include_router(recommendations_router, prefix="/api/v1")

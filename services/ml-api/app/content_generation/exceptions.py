@@ -345,6 +345,86 @@ class UnsupportedProviderError(GenerationProviderError):
         )
 
 
+class InvalidProviderConfigurationError(GenerationProviderError):
+    """Raised when provider configuration or credentials are missing or invalid."""
+
+    def __init__(
+        self,
+        message_safe: str = "La configuración o credenciales del proveedor LLM son inválidas o están incompletas.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="INVALID_PROVIDER_CONFIGURATION",
+            status_code=500,
+            details=details,
+        )
+
+
+class ProviderAuthenticationError(GenerationProviderError):
+    """Raised when LLM provider rejects authentication or API key."""
+
+    def __init__(
+        self,
+        message_safe: str = "Error de autenticación con el proveedor LLM. Verifique las credenciales de acceso.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="PROVIDER_AUTHENTICATION_ERROR",
+            status_code=502,
+            details=details,
+        )
+
+
+class ProviderRateLimitError(GenerationProviderError):
+    """Raised when provider rate limits or quotas are exceeded."""
+
+    def __init__(
+        self,
+        message_safe: str = "Se excedió la tasa de peticiones o la cuota del proveedor LLM.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="PROVIDER_RATE_LIMIT_EXCEEDED",
+            status_code=429,
+            details=details,
+        )
+
+
+class ProviderTimeoutError(GenerationProviderError):
+    """Raised when an LLM provider request times out."""
+
+    def __init__(
+        self,
+        message_safe: str = "El proveedor LLM no respondió dentro del tiempo límite establecido.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="PROVIDER_TIMEOUT",
+            status_code=504,
+            details=details,
+        )
+
+
+class ProviderResponseFormatError(GenerationProviderError):
+    """Raised when provider produces invalid JSON, truncated output or schema mismatches."""
+
+    def __init__(
+        self,
+        message_safe: str = "La respuesta devuelta por el proveedor LLM no tiene un formato válido o fue truncada.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="PROVIDER_RESPONSE_FORMAT_ERROR",
+            status_code=502,
+            details=details,
+        )
+
+
 # ==============================================================================
 # Draft Validation Violations
 # ==============================================================================
@@ -589,5 +669,69 @@ class DraftAlreadyReviewedError(DraftRepositoryError):
             message_safe=message_safe,
             code="DRAFT_ALREADY_REVIEWED",
             status_code=409,
+            details=details,
+        )
+
+
+class DraftNotFoundError(ContentGenerationError):
+    """Raised when question draft does not exist or does not belong to the requesting tenant."""
+
+    def __init__(
+        self,
+        message_safe: str = "El borrador de pregunta solicitado no existe o no pertenece a su institución.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="DRAFT_NOT_FOUND",
+            status_code=404,
+            details=details,
+        )
+
+
+class ConcurrencyConflictError(ContentGenerationError):
+    """Raised when an update conflicts with concurrent modifications (optimistic concurrency)."""
+
+    def __init__(
+        self,
+        message_safe: str = "Conflicto de concurrencia: el recurso fue modificado por otro usuario desde su última lectura.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="CONCURRENCY_CONFLICT",
+            status_code=409,
+            details=details,
+        )
+
+
+class KcAssignmentRequiredError(ContentGenerationError):
+    """Raised when attempting to approve a question draft without an assigned Knowledge Component."""
+
+    def __init__(
+        self,
+        message_safe: str = "El borrador no tiene un Componente de Conocimiento asignado. Por favor asigne un Knowledge Component antes de aprobar.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="KC_ASSIGNMENT_REQUIRED",
+            status_code=422,
+            details=details,
+        )
+
+
+class KnowledgeComponentNotFoundError(ContentGenerationError):
+    """Raised when the specified Knowledge Component is not found in the tenant."""
+
+    def __init__(
+        self,
+        message_safe: str = "El Componente de Conocimiento especificado no existe en su institución.",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message_safe=message_safe,
+            code="KNOWLEDGE_COMPONENT_NOT_FOUND",
+            status_code=404,
             details=details,
         )

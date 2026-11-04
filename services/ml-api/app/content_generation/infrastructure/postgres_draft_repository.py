@@ -9,14 +9,18 @@ Enforces:
 import json
 import logging
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 import asyncpg
 
 from app.content_generation.exceptions import (
+    ConcurrencyConflictError,
     DraftAlreadyReviewedError,
+    DraftNotFoundError,
     EmptyDraftsError,
+    InvalidJobStateTransitionError,
     JobNotFoundError,
 )
 from app.content_generation.repositories.draft_repository import (
@@ -66,6 +70,7 @@ def _row_to_draft(row: asyncpg.Record) -> QuestionDraftRecord:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         content_hash=dict(row).get("content_hash"),
+        rejection_reason=dict(row).get("rejection_reason"),
     )
 
 
@@ -102,6 +107,9 @@ class PostgresDraftRepository(DraftRepositoryProtocol):
         self,
         job_id: str,
         tenant_id: str,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[QuestionDraftRecord]:
         """Retrieve all drafts for a given job and tenant ordered chronologically."""
         try:
@@ -110,15 +118,170 @@ class PostgresDraftRepository(DraftRepositoryProtocol):
         except ValueError:
             return []
 
-        query = """
+        conditions = ["generation_job_id = $1::uuid", "tenant_id = $2::uuid"]
+        params: list[object] = [jid, tid]
+        idx = 3
+
+        if status:
+            conditions.append(f"status = ${idx}::draft_status_enum")
+            params.append(status)
+            idx += 1
+
+        query = f"""
         SELECT * FROM question_drafts
-        WHERE generation_job_id = $1::uuid AND tenant_id = $2::uuid
-        ORDER BY created_at ASC;
+        WHERE {' AND '.join(conditions)}
+        ORDER BY created_at ASC
         """
+        if limit is not None:
+            query += f" LIMIT ${idx} OFFSET ${idx + 1};"
+            params.extend([limit, offset or 0])
+        else:
+            query += ";"
+
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query, jid, tid)
+            rows = await conn.fetch(query, *params)
 
         return [_row_to_draft(r) for r in rows]
+
+    async def update_draft(
+        self,
+        draft_id: str,
+        tenant_id: str,
+        reviewed_by: str,
+        question_text: str | None = None,
+        options: list[dict[str, Any]] | None = None,
+        explanation: str | None = None,
+        difficulty: float | None = None,
+        bloom_taxonomy: str | None = None,
+        knowledge_component_id: str | None = None,
+        expected_updated_at: datetime | None = None,
+    ) -> QuestionDraftRecord:
+        """Update an existing draft with row-locking and optimistic concurrency check."""
+        try:
+            did = uuid.UUID(draft_id)
+            tid = uuid.UUID(tenant_id)
+            uid = uuid.UUID(reviewed_by)
+            kcid = uuid.UUID(knowledge_component_id) if knowledge_component_id else None
+        except ValueError as e:
+            raise DraftNotFoundError(f"Identificador inválido: {e}") from e
+
+        async with self._pool.acquire() as conn, conn.transaction():
+            fetch_query = """
+            SELECT * FROM question_drafts
+            WHERE id = $1::uuid AND tenant_id = $2::uuid
+            FOR UPDATE;
+            """
+            row = await conn.fetchrow(fetch_query, did, tid)
+            if not row:
+                raise DraftNotFoundError(f"El borrador con ID {draft_id} no fue encontrado.")
+
+            curr_status = row["status"]
+            if curr_status in ("approved", "rejected"):
+                raise InvalidJobStateTransitionError(
+                    f"No se pueden modificar borradores en estado terminal '{curr_status}'.",
+                    details={"draft_id": draft_id, "status": curr_status},
+                )
+
+            if expected_updated_at is not None and row["updated_at"] is not None:
+                curr_dt = row["updated_at"]
+                if abs((curr_dt - expected_updated_at).total_seconds()) > 1.0:
+                    raise ConcurrencyConflictError(
+                        "El borrador fue modificado por otro usuario desde su última lectura.",
+                        details={
+                            "draft_id": draft_id,
+                            "current_updated_at": str(curr_dt),
+                            "expected_updated_at": str(expected_updated_at),
+                        },
+                    )
+
+            options_json = json.dumps(options) if options is not None else None
+            q_text = question_text if question_text is not None else row["question_text"]
+            kc_name = row["suggested_kc_name"]
+            opts = options if options is not None else _deserialize_json(row["options"])
+            new_hash = compute_draft_content_hash(q_text, kc_name, opts)
+
+            update_query = """
+            UPDATE question_drafts
+            SET question_text = COALESCE($3, question_text),
+                options = COALESCE($4::jsonb, options),
+                explanation = COALESCE($5, explanation),
+                suggested_difficulty = COALESCE($6, suggested_difficulty),
+                suggested_bloom_level = COALESCE($7, suggested_bloom_level),
+                knowledge_component_id = COALESCE($8::uuid, knowledge_component_id),
+                status = 'edited'::draft_status_enum,
+                reviewed_by = $9::uuid,
+                content_hash = $10,
+                updated_at = now()
+            WHERE id = $1::uuid AND tenant_id = $2::uuid
+            RETURNING *;
+            """
+            updated_row = await conn.fetchrow(
+                update_query,
+                did,
+                tid,
+                question_text,
+                options_json,
+                explanation,
+                difficulty,
+                bloom_taxonomy,
+                kcid,
+                uid,
+                new_hash,
+            )
+
+        if not updated_row:
+            raise DraftNotFoundError(f"Error al actualizar el borrador {draft_id}.")
+        return _row_to_draft(updated_row)
+
+    async def reject_draft(
+        self,
+        draft_id: str,
+        tenant_id: str,
+        reviewed_by: str,
+        rejection_reason: str | None = None,
+    ) -> QuestionDraftRecord:
+        """Reject a draft setting status to 'rejected' idempotently."""
+        try:
+            did = uuid.UUID(draft_id)
+            tid = uuid.UUID(tenant_id)
+            uid = uuid.UUID(reviewed_by)
+        except ValueError as e:
+            raise DraftNotFoundError(f"Identificador inválido: {e}") from e
+
+        async with self._pool.acquire() as conn, conn.transaction():
+            fetch_query = """
+            SELECT * FROM question_drafts
+            WHERE id = $1::uuid AND tenant_id = $2::uuid
+            FOR UPDATE;
+            """
+            row = await conn.fetchrow(fetch_query, did, tid)
+            if not row:
+                raise DraftNotFoundError(f"El borrador con ID {draft_id} no fue encontrado.")
+
+            curr_status = row["status"]
+            if curr_status == "approved":
+                raise InvalidJobStateTransitionError(
+                    "No se puede descartar un borrador que ya fue aprobado y publicado.",
+                    details={"draft_id": draft_id, "status": curr_status},
+                )
+            if curr_status == "rejected":
+                return _row_to_draft(row)
+
+            update_query = """
+            UPDATE question_drafts
+            SET status = 'rejected'::draft_status_enum,
+                reviewed_by = $3::uuid,
+                reviewed_at = now(),
+                rejection_reason = $4,
+                updated_at = now()
+            WHERE id = $1::uuid AND tenant_id = $2::uuid
+            RETURNING *;
+            """
+            updated_row = await conn.fetchrow(update_query, did, tid, uid, rejection_reason)
+
+        if not updated_row:
+            raise DraftNotFoundError(f"Error al rechazar el borrador {draft_id}.")
+        return _row_to_draft(updated_row)
 
     async def delete_unreviewed_drafts_for_job(
         self,

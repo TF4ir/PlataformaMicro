@@ -328,7 +328,7 @@ async def test_fencing_4_completion_after_lease_expiry_rejected(local_pool: asyn
     )
 
     # Wait for lease to expire completely
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # Worker attempts completion with expired lease -> MUST FAIL even before another worker claims
     with pytest.raises(InvalidJobStateTransitionError) as exc_info:
@@ -374,7 +374,7 @@ async def test_fencing_5_old_worker_rejected_after_new_worker_claimed(local_pool
     )
 
     # Expire lease
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # Worker B claims job with new token
     claimed_b = await job_repo.claim_pending_job(
@@ -537,7 +537,7 @@ async def test_fencing_renew_lease_and_heartbeat_rejected_when_lease_expired(loc
     )
 
     # Let the 1-second lease expire
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # Stale worker attempts to renew lease -> MUST FAIL
     with pytest.raises(InvalidJobStateTransitionError):
@@ -956,7 +956,7 @@ async def test_worker_crash_and_recovery_lifecycle(local_pool: asyncpg.Pool) -> 
     assert interim_job.attempt_count == 1
 
     # 6. Esperar a la expiración del lease de Worker A
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(2.0)
 
     # [Diferenciación Expresa: Reinicio del Pool de Conexiones de la Aplicación]
     logger.info("Diferenciación: Simulando reconexión / nuevo pool tras corte de red...")
