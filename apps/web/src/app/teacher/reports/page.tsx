@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   TrendingUp,
   Download,
@@ -9,6 +10,9 @@ import {
   BarChart3,
   ShieldCheck,
   CheckCircle2,
+  AlertCircle,
+  Brain,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,204 +29,320 @@ import {
   BarChart,
   Bar,
 } from "recharts";
-
-const retentionDecayData = [
-  { day: "Día 0", fotosintesis: 100, respiracion: 100, genetica: 100 },
-  { day: "Día 1", fotosintesis: 89, respiracion: 86, genetica: 92 },
-  { day: "Día 3", fotosintesis: 78, respiracion: 71, genetica: 84 },
-  { day: "Día 5", fotosintesis: 74, respiracion: 63, genetica: 79 },
-  { day: "Día 7", fotosintesis: 71, respiracion: 58, genetica: 75 },
-  { day: "Día 14", fotosintesis: 68, respiracion: 52, genetica: 71 },
-];
-
-const sectionPerformanceData = [
-  { section: "5.° A", microaprendizajes: 184, retencionPromedio: 82 },
-  { section: "5.° B", microaprendizajes: 162, retencionPromedio: 76 },
-  { section: "5.° C", microaprendizajes: 149, retencionPromedio: 79 },
-];
+import {
+  getTeacherReports,
+  TeacherReportsResponse,
+} from "@/lib/api/teacher";
 
 export default function TeacherReportsPage() {
+  const [reports, setReports] = useState<TeacherReportsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  const handleExportData = () => {
-    setDownloadSuccess(true);
-    setTimeout(() => setDownloadSuccess(false), 3000);
+  useEffect(() => {
+    let isMounted = true;
+    async function loadReports() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getTeacherReports();
+        if (isMounted) {
+          setReports(data);
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const msg = err instanceof Error ? err.message : "Error al cargar reportes";
+          setError(msg);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+    loadReports();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleExportCSV = () => {
+    if (!reports) return;
+    try {
+      // Build clean pseudonymized CSV
+      const rows = [
+        ["student_code_pseudo", "section", "kc_name", "observed_accuracy", "status"].join(","),
+      ];
+      for (const st of reports.mastery_heatmap.rows) {
+        for (const [kcId, data] of Object.entries(st.kcs)) {
+          const kcObj = reports.mastery_heatmap.kcs.find((k) => k.id === kcId);
+          const kcName = kcObj ? kcObj.name : kcId;
+          rows.push(
+            [
+              `"${st.student_code || st.student_name}"`,
+              `"${st.section_name}"`,
+              `"${kcName}"`,
+              data.accuracy,
+              `"${data.status}"`,
+            ].join(",")
+          );
+        }
+      }
+      const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `telemetria_retencion_seudonimizada_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3500);
+    } catch (err) {
+      console.error("Export error:", err);
+    }
   };
+
+  if (loading && !reports) {
+    return (
+      <div className="space-y-8 pb-12 animate-pulse">
+        <div className="h-8 w-64 bg-slate-200 rounded" />
+        <div className="h-32 bg-slate-100 rounded-3xl" />
+        <div className="h-64 bg-slate-100 rounded-3xl" />
+        <div className="h-64 bg-slate-100 rounded-3xl" />
+      </div>
+    );
+  }
+
+  const aiInsight = reports?.ai_insight;
+  const sectionsSummary = reports?.sections_summary || [];
+  const heatmap = reports?.mastery_heatmap;
+  const kcOverview = reports?.kc_performance_overview || [];
+  const trajectory = reports?.retention_growth_trajectory || [];
 
   return (
     <div className="space-y-8 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-teal-700">
-            INVESTIGACIÓN & MODELADO
+          <p className="text-xs font-bold uppercase tracking-wider text-[#0A635F]">
+            INVESTIGACIÓN & MODELADO PREDICTIVO
           </p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-1">
-            Reportes y Curvas de Retención
+            Reportes: Resultados observados y seguimiento de retención
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Dinámica probabilística de consolidación de memoria a largo plazo y evaluación cuasiexperimental.
+            Telemetría objetiva para el seguimiento de la memoria a largo plazo y la evaluación cuasiexperimental.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Button
             size="lg"
-            onClick={handleExportData}
+            onClick={handleExportCSV}
             variant="outline"
             className="rounded-xl text-xs gap-2 border-slate-200 hover:border-teal-400 bg-white shadow-2xs"
           >
             <Download className="w-4 h-4 text-teal-700" />
-            {downloadSuccess ? "¡Exportado (CSV)!" : "Exportar dataset seudonimizado"}
+            {downloadSuccess ? "¡Dataset descargado!" : "Exportar dataset seudonimizado"}
           </Button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {error && (
+        <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* AI Insight Card (Captura 23) */}
+      {aiInsight && (
+        <div className="rounded-3xl p-6 md:p-8 bg-gradient-to-r from-teal-900 via-[#0B2D34] to-[#123E45] text-white shadow-md relative overflow-hidden">
+          <div className="max-w-2xl relative z-10 space-y-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-3.5 py-1 text-xs font-medium text-[#69D7C9] border border-[#65D7C9]/30">
+              <Sparkles className="w-3.5 h-3.5 text-[#69D7C9]" />
+              Insight de Aprendizaje Asistido
+            </span>
+
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight text-white">
+              {aiInsight.title}
+            </h2>
+
+            <p className="text-teal-100/90 text-xs md:text-sm leading-relaxed">
+              {aiInsight.message}
+            </p>
+
+            {aiInsight.recommended_focus_kc && (
+              <div className="pt-2 flex items-center gap-3">
+                <Link href="/teacher/activities">
+                  <Button className="bg-[#69D7C9] hover:bg-[#52c4b5] text-[#0B2D34] font-bold text-xs rounded-xl shadow-xs">
+                    Programar repaso de refuerzo ({aiInsight.recommended_focus_kc})
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Sections Telemetry Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <Card className="rounded-2xl border-slate-200/80 p-5 shadow-xs bg-white space-y-2">
-          <p className="text-xs font-semibold text-slate-500">Tasa de retención diferida (7 días)</p>
-          <p className="text-3xl font-extrabold text-slate-900">71.4%</p>
-          <p className="text-xs text-emerald-600 font-semibold">↑ +14.8% vs. baseline sin repasos</p>
-        </Card>
-
-        <Card className="rounded-2xl border-slate-200/80 p-5 shadow-xs bg-white space-y-2">
-          <p className="text-xs font-semibold text-slate-500">Eventos de práctica registrados</p>
-          <p className="text-3xl font-extrabold text-slate-900">1,248</p>
-          <p className="text-xs text-slate-500">Registros append-only inmutables</p>
-        </Card>
-
-        <Card className="rounded-2xl border-slate-200/80 p-5 shadow-xs bg-white space-y-2">
-          <p className="text-xs font-semibold text-slate-500">Calibración probabilística (Brier)</p>
-          <p className="text-3xl font-extrabold text-slate-900">0.142</p>
-          <p className="text-xs text-teal-700 font-semibold">Modelo DAS3H en evaluación</p>
-        </Card>
+        {sectionsSummary.map((sec) => (
+          <Card key={sec.section_id} className="rounded-2xl border-slate-200/80 p-5 bg-white shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-500">{sec.section_name}</p>
+              <Badge variant="outline" className="text-[10px]">
+                {sec.students_count} alumnos
+              </Badge>
+            </div>
+            <p className="text-2xl font-extrabold text-slate-900">{sec.average_score}%</p>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <span>{sec.completed_attempts} cuestionarios evaluados</span>
+              <span className="text-teal-700 font-semibold">{sec.reviews_completed} repasos</span>
+            </div>
+          </Card>
+        ))}
       </div>
 
-      {/* Main Retention Decay Chart */}
-      <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">
-              Curvas empíricas de decaimiento por Componente de Conocimiento (KC)
-            </h2>
-            <p className="text-xs text-slate-500">
-              Estimación $P(R=1)$ a lo largo del tiempo transcurrido desde la última micropráctica
-            </p>
-          </div>
-          <Badge
-            variant="outline"
-            className="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-50 border-teal-200 self-start sm:self-auto"
-          >
-            MODELO TEMPORAL
-          </Badge>
-        </div>
-
-        <div className="h-72 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={retentionDecayData}
-              margin={{ top: 10, right: 20, left: -20, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis
-                dataKey="day"
-                tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
-                tick={{ fill: "#64748b", fontSize: 11 }}
-              />
-              <YAxis
-                domain={[40, 100]}
-                tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
-                tick={{ fill: "#64748b", fontSize: 11 }}
-                tickFormatter={(v) => `${v}%`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#ffffff",
-                  borderRadius: "12px",
-                  border: "1px solid #e2e8f0",
-                  fontSize: "12px",
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }} />
-              <Line
-                type="monotone"
-                dataKey="fotosintesis"
-                name="Fotosíntesis (KC-01)"
-                stroke="#0f766e"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#0f766e" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="respiracion"
-                name="Respiración Celular (KC-02)"
-                stroke="#f59e0b"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#f59e0b" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="genetica"
-                name="Genética Mendeliana (KC-03)"
-                stroke="#8b5cf6"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#8b5cf6" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      {/* Section Comparison */}
-      <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
+      {/* Student Mastery Heat Map (Captura 23) */}
+      <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            Adherencia a repasos adaptativos por sección de 5.° de secundaria
+          <h2 className="text-xl font-bold text-slate-900">
+            Student Mastery Heat Map (Componentes de Conocimiento)
           </h2>
           <p className="text-xs text-slate-500">
-            Cantidad de microaprendizajes completados y nivel de retención promedio
+            Visualización matricial de la precisión observada por estudiante y concepto evaluado
           </p>
         </div>
 
-        <div className="h-64 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={sectionPerformanceData}
-              margin={{ top: 10, right: 20, left: -20, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis
-                dataKey="section"
-                tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
-                tick={{ fill: "#64748b", fontSize: 11 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
-                tick={{ fill: "#64748b", fontSize: 11 }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#ffffff",
-                  borderRadius: "12px",
-                  border: "1px solid #e2e8f0",
-                  fontSize: "12px",
-                }}
-              />
-              <Bar
-                dataKey="microaprendizajes"
-                name="Microaprendizajes completados"
-                fill="#0f766e"
-                radius={[6, 6, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {heatmap && heatmap.rows.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-center border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500 font-bold text-[10px] uppercase">
+                  <th className="py-3 px-4 text-left font-semibold">Estudiante</th>
+                  <th className="py-3 px-3 text-left font-semibold">Sección</th>
+                  {heatmap.kcs.map((kc) => (
+                    <th key={kc.id} className="py-3 px-3 font-semibold min-w-[110px]">
+                      {kc.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {heatmap.rows.map((row) => (
+                  <tr key={row.student_id} className="hover:bg-slate-50/60">
+                    <td className="py-3 px-4 text-left font-semibold text-slate-900">
+                      {row.student_name}{" "}
+                      <span className="text-[10px] text-slate-400 font-mono">({row.student_code || "EST"})</span>
+                    </td>
+                    <td className="py-3 px-3 text-left text-slate-500">{row.section_name}</td>
+                    {heatmap.kcs.map((kc) => {
+                      const cell = row.kcs[kc.id];
+                      if (!cell) {
+                        return (
+                          <td key={kc.id} className="py-3 px-3 text-slate-300">
+                            —
+                          </td>
+                        );
+                      }
+                      const acc = cell.accuracy;
+                      let bgClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
+                      if (acc < 60) {
+                        bgClass = "bg-rose-50 text-rose-800 border-rose-200";
+                      } else if (acc < 80) {
+                        bgClass = "bg-amber-50 text-amber-800 border-amber-200";
+                      }
+                      return (
+                        <td key={kc.id} className="py-2 px-2">
+                          <span className={`inline-block w-16 py-1 rounded-lg border font-bold text-xs ${bgClass}`}>
+                            {acc}%
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-xs text-slate-400">
+            No hay suficientes respuestas registradas para generar el mapa de calor.
+          </div>
+        )}
       </Card>
+
+      {/* Two Column Visual Charts (Captura 23) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Chart 1: Class Performance Overview */}
+        <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Class Performance Overview
+            </h2>
+            <p className="text-xs text-slate-500">
+              Precisión observada por Componente de Conocimiento (KC)
+            </p>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={kcOverview} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="kc_name" tick={{ fontSize: 11, fill: "#64748b" }} interval={0} angle={-15} textAnchor="end" />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
+                <Tooltip formatter={(val: any) => [`${val}%`, "Precisión promedio"]} />
+                <Bar dataKey="average_accuracy" fill="#0A635F" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Chart 2: Retention Growth Trajectory */}
+        <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Trayectoria de retención temporal
+            </h2>
+            <p className="text-xs text-slate-500">
+              Proyección con repasos espaciados vs. decaimiento natural de la curva del olvido
+            </p>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trajectory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748b" }} />
+                <YAxis domain={[20, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
+                <Tooltip formatter={(val: any) => [`${val}%`, ""]} />
+                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
+                <Line
+                  type="monotone"
+                  dataKey="projected_with_review"
+                  name="Con repaso adaptativo (DAS3H)"
+                  stroke="#0A635F"
+                  strokeWidth={2.5}
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="projected_without_review"
+                  name="Sin repaso (Curva de olvido)"
+                  stroke="#e11d48"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  dot={{ r: 3 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

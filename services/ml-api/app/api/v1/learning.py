@@ -15,6 +15,8 @@ from app.schemas.learning import (
     StudentActivityDetail,
     StudentActivityListItem,
     StudentCourseItem,
+    StudentDashboardResponse,
+    StudentProgressDetailResponse,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
     SubmitAttemptResponse,
@@ -41,6 +43,52 @@ def get_learning_repo() -> LearningRepository:
             },
         )
     return LearningRepository(pool=_POOL)
+
+
+@router.get(
+    "/learning/student/dashboard",
+    response_model=StudentDashboardResponse,
+    summary="Resumen consolidado para el dashboard del estudiante (alias)",
+)
+@router.get(
+    "/students/me/dashboard",
+    response_model=StudentDashboardResponse,
+    summary="Resumen consolidado para el dashboard del estudiante",
+)
+async def get_student_dashboard(
+    current_user: Annotated[AuthenticatedUser, Depends(require_role("student"))],
+    repo: Annotated[LearningRepository, Depends(get_learning_repo)],
+) -> StudentDashboardResponse:
+    """Retrieve enrolled courses, upcoming reviews, objective analytics, and recent activities."""
+    tenant_uuid = UUID(current_user.tenant_id)
+    student_uuid = UUID(current_user.user_id)
+    return await repo.get_student_dashboard(
+        tenant_id=tenant_uuid,
+        student_id=student_uuid,
+    )
+
+
+@router.get(
+    "/learning/student/progress",
+    response_model=StudentProgressDetailResponse,
+    summary="Detalle de progreso del estudiante separando observación vs retención (alias)",
+)
+@router.get(
+    "/students/me/progress",
+    response_model=StudentProgressDetailResponse,
+    summary="Detalle de progreso del estudiante separando observación vs retención",
+)
+async def get_student_progress(
+    current_user: Annotated[AuthenticatedUser, Depends(require_role("student"))],
+    repo: Annotated[LearningRepository, Depends(get_learning_repo)],
+) -> StudentProgressDetailResponse:
+    """Retrieve score evolution, KC mastery breakdown, and historical quiz attempts."""
+    tenant_uuid = UUID(current_user.tenant_id)
+    student_uuid = UUID(current_user.user_id)
+    return await repo.get_student_progress(
+        tenant_id=tenant_uuid,
+        student_id=student_uuid,
+    )
 
 
 @router.get(

@@ -169,6 +169,84 @@ export interface AttemptResultsResponse {
   kc_summaries: KCResultSummary[];
 }
 
+export interface StudentCourseCard {
+  course_id: string;
+  course_code: string;
+  course_name: string;
+  description: string | null;
+  section_id: string;
+  section_name: string;
+  units_count: number;
+  kcs_count: number;
+  active_activities_count: number;
+  completed_activities_count: number;
+  progress_percentage: number;
+}
+
+export interface UpcomingReviewItem {
+  recommendation_id: string | null;
+  knowledge_component_id: string;
+  knowledge_component_name: string;
+  course_name: string;
+  scheduled_for: string | null;
+  estimated_minutes: number;
+  is_urgent: boolean;
+  priority_label: string;
+}
+
+export interface StudentAnalyticsSummary {
+  weekly_learning_minutes: number;
+  completed_activities_count: number;
+  total_answers: number;
+  observed_accuracy_percentage: number;
+  reviewed_concepts_count: number;
+  consolidated_concepts_count: number;
+  total_concepts_count: number;
+}
+
+export interface StudentDashboardResponse {
+  student_name: string;
+  student_code: string | null;
+  enrolled_courses: StudentCourseCard[];
+  analytics: StudentAnalyticsSummary;
+  upcoming_reviews: UpcomingReviewItem[];
+  recent_activities: StudentActivityListItem[];
+}
+
+export interface ScoreEvolutionItem {
+  date: string;
+  accuracy: number;
+  activity_title: string;
+}
+
+export interface StudentKCMasteryProgress {
+  kc_id: string;
+  kc_name: string;
+  unit_title: string;
+  observed_accuracy: number;
+  total_answers: number;
+  status: string;
+  estimated_retention: number | null;
+  is_cold_start: boolean;
+}
+
+export interface StudentProgressActivityHistory {
+  attempt_id: string;
+  activity_id: string;
+  activity_title: string;
+  course_name: string;
+  completed_at: string;
+  score: number;
+  status: string;
+}
+
+export interface StudentProgressDetailResponse {
+  analytics: StudentAnalyticsSummary;
+  evolution: ScoreEvolutionItem[];
+  kc_breakdown: StudentKCMasteryProgress[];
+  activity_history: StudentProgressActivityHistory[];
+}
+
 // Teacher Activity Management Interfaces
 export interface ActivitySectionDetail {
   section_id: string;
@@ -564,4 +642,30 @@ export const learningApi = {
     }
     return res.json();
   },
+
+  async getDashboard(): Promise<StudentDashboardResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/learning/student/dashboard`, {
+      headers: await getStudentHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(extractErrorMessage(err, "Error al consultar panel del estudiante"));
+    }
+    return res.json();
+  },
+
+  async getProgress(): Promise<StudentProgressDetailResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/learning/student/progress`, {
+      headers: await getStudentHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(extractErrorMessage(err, "Error al consultar progreso del estudiante"));
+    }
+    return res.json();
+  },
 };
+
+export const studentLearningApi = learningApi;

@@ -18,14 +18,22 @@ from app.schemas.learning import (
     AttemptQuestionReview,
     AttemptResultsResponse,
     KCResultSummary,
+    ScoreEvolutionItem,
     StartAttemptResponse,
     StudentActivityDetail,
     StudentActivityListItem,
+    StudentAnalyticsSummary,
+    StudentCourseCard,
     StudentCourseItem,
+    StudentDashboardResponse,
+    StudentKCMasteryProgress,
+    StudentProgressActivityHistory,
+    StudentProgressDetailResponse,
     StudentQuestionItem,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
     SubmitAttemptResponse,
+    UpcomingReviewItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -831,4 +839,332 @@ class LearningRepository:
                 correct_answers=attempt["correct_answers"] or sum(1 for q in questions if q.is_correct),
                 questions=questions,
                 kc_summaries=kc_summaries,
+            )
+
+    async def get_student_dashboard(
+        self,
+        tenant_id: UUID,
+        student_id: UUID,
+    ) -> StudentDashboardResponse:
+        """Fetch unified student dashboard payload with enrolled courses, analytics, recommendations, and recent activities."""
+        async with self.pool.acquire() as conn:
+            # 1. Student profile
+            prof = await conn.fetchrow(
+                "SELECT full_name, student_code FROM profiles WHERE id = $1 AND tenant_id = $2",
+                student_id,
+                tenant_id,
+            )
+            s_name = prof["full_name"] if prof else "Estudiante"
+            s_code = prof["student_code"] if prof else None
+
+            # 2. Enrolled courses with enriched metrics
+            c_rows = await conn.fetch(
+                """
+                SELECT 
+                    c.id AS course_id, c.code AS course_code, c.name AS course_name, c.description,
+                    s.id AS section_id, s.name AS section_name,
+                    (SELECT COUNT(*)::int FROM units WHERE course_id = c.id) AS units_count,
+                    (
+                        SELECT COUNT(kc.id)::int
+                        FROM knowledge_components kc
+                        JOIN units u ON kc.unit_id = u.id
+                        WHERE u.course_id = c.id
+                    ) AS kcs_count,
+                    (
+                        SELECT COUNT(DISTINCT a.id)::int
+                        FROM activities a
+                        WHERE a.course_id = c.id AND a.status = 'published'
+                    ) AS active_acts,
+                    (
+                        SELECT COUNT(DISTINCT qa.activity_id)::int
+                        FROM quiz_attempts qa
+                        JOIN activities a ON qa.activity_id = a.id
+                        JOIN enrollments e2 ON qa.enrollment_id = e2.id
+                        WHERE e2.student_id = $2 AND qa.status = 'completed' AND a.course_id = c.id
+                    ) AS completed_acts
+                FROM enrollments e
+                JOIN sections s ON s.id = e.section_id
+                JOIN courses c ON c.id = s.course_id
+                WHERE e.tenant_id = $1 AND e.student_id = $2 AND c.is_active = true
+                ORDER BY c.name ASC
+                """,
+                tenant_id,
+                student_id,
+            )
+
+            enrolled_courses: list[StudentCourseCard] = []
+            for r in c_rows:
+                tot_acts = r["active_acts"] or 0
+                comp_acts = r["completed_acts"] or 0
+                pct = round((comp_acts / tot_acts) * 100.0, 1) if tot_acts > 0 else 0.0
+                enrolled_courses.append(
+                    StudentCourseCard(
+                        course_id=r["course_id"],
+                        course_code=r["course_code"],
+                        course_name=r["course_name"],
+                        description=r["description"],
+                        section_id=r["section_id"],
+                        section_name=r["section_name"],
+                        units_count=r["units_count"] or 0,
+                        kcs_count=r["kcs_count"] or 0,
+                        active_activities_count=tot_acts,
+                        completed_activities_count=comp_acts,
+                        progress_percentage=pct,
+                    )
+                )
+
+            # 3. Objective Analytics (answers, accuracy, study minutes)
+            stats = await conn.fetchrow(
+                """
+                SELECT 
+                    COUNT(id)::int AS total_ans,
+                    COUNT(id) FILTER (WHERE is_correct = true)::int AS correct_ans
+                FROM answer_events
+                WHERE student_id = $1 AND tenant_id = $2
+                """,
+                student_id,
+                tenant_id,
+            )
+            tot_ans = stats["total_ans"] if stats else 0
+            cor_ans = stats["correct_ans"] if stats else 0
+            obs_acc = round((cor_ans / tot_ans) * 100.0, 1) if tot_ans > 0 else 0.0
+
+            # Learning minutes (last 7 days from content_exposure_events)
+            exp_duration = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0.0)::float
+                FROM content_exposure_events
+                WHERE student_id = $1 AND tenant_id = $2
+                  AND event_timestamp >= now() - interval '7 days'
+                """,
+                student_id,
+                tenant_id,
+            ) or 0.0
+            weekly_mins = int(exp_duration // 60)
+
+            # Total concepts count in student's enrolled courses
+            tot_kcs = sum(c.kcs_count for c in enrolled_courses)
+
+            # Consolidated concepts count (observed accuracy >= 80% on that KC)
+            cons_kcs_count = await conn.fetchval(
+                """
+                SELECT COUNT(*)::int FROM (
+                    SELECT knowledge_component_id
+                    FROM answer_events
+                    WHERE student_id = $1 AND tenant_id = $2
+                    GROUP BY knowledge_component_id
+                    HAVING (COUNT(id) FILTER (WHERE is_correct = true)::float / COUNT(id)::float) >= 0.80
+                ) sub
+                """,
+                student_id,
+                tenant_id,
+            ) or 0
+
+            # Concepts reviewed in last 7 days
+            rev_kcs_count = await conn.fetchval(
+                """
+                SELECT COUNT(DISTINCT kc_id)::int FROM (
+                    SELECT knowledge_component_id AS kc_id
+                    FROM content_exposure_events
+                    WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
+                    UNION
+                    SELECT knowledge_component_id AS kc_id
+                    FROM answer_events
+                    WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
+                ) u_kc
+                """,
+                student_id,
+                tenant_id,
+            ) or 0
+
+            # Completed activities count
+            comp_acts_tot = sum(c.completed_activities_count for c in enrolled_courses)
+
+            analytics = StudentAnalyticsSummary(
+                weekly_learning_minutes=weekly_mins,
+                completed_activities_count=comp_acts_tot,
+                total_answers=tot_ans,
+                observed_accuracy_percentage=obs_acc,
+                reviewed_concepts_count=rev_kcs_count,
+                consolidated_concepts_count=cons_kcs_count,
+                total_concepts_count=tot_kcs,
+            )
+
+            # 4. Upcoming Spaced Repetition Reviews (Pending recommendations)
+            rec_rows = await conn.fetch(
+                """
+                SELECT 
+                    r.id AS rec_id,
+                    r.knowledge_component_id,
+                    kc.name AS kc_name,
+                    c.name AS course_name,
+                    r.scheduled_for,
+                    m.estimated_duration_seconds
+                FROM recommendations r
+                JOIN knowledge_components kc ON r.knowledge_component_id = kc.id
+                JOIN units u ON kc.unit_id = u.id
+                JOIN courses c ON u.course_id = c.id
+                LEFT JOIN microcontents m ON r.microcontent_id = m.id
+                WHERE r.student_id = $1 AND r.tenant_id = $2 AND r.status = 'pending'
+                ORDER BY r.created_at DESC
+                LIMIT 5
+                """,
+                student_id,
+                tenant_id,
+            )
+            upcoming_reviews = [
+                UpcomingReviewItem(
+                    recommendation_id=r["rec_id"],
+                    knowledge_component_id=r["knowledge_component_id"],
+                    knowledge_component_name=r["kc_name"],
+                    course_name=r["course_name"],
+                    scheduled_for=r["scheduled_for"],
+                    estimated_minutes=max(2, int((r["estimated_duration_seconds"] or 180) // 60)),
+                    is_urgent=True,
+                    priority_label="Refuerzo sugerido",
+                )
+                for r in rec_rows
+            ]
+
+            # 5. Recent activities
+            recent_acts = await self.list_student_activities(tenant_id=tenant_id, student_id=student_id)
+
+            return StudentDashboardResponse(
+                student_name=s_name,
+                student_code=s_code,
+                enrolled_courses=enrolled_courses,
+                analytics=analytics,
+                upcoming_reviews=upcoming_reviews,
+                recent_activities=recent_acts[:5],
+            )
+
+    async def get_student_progress(
+        self,
+        tenant_id: UUID,
+        student_id: UUID,
+    ) -> StudentProgressDetailResponse:
+        """Fetch detailed student progress separating observed quiz performance from retention estimates."""
+        dashboard = await self.get_student_dashboard(tenant_id=tenant_id, student_id=student_id)
+        async with self.pool.acquire() as conn:
+            # 1. Score evolution
+            evo_rows = await conn.fetch(
+                """
+                SELECT 
+                    to_char(qa.completed_at, 'DD Mon') AS date_label,
+                    qa.score,
+                    a.title AS activity_title
+                FROM quiz_attempts qa
+                JOIN activities a ON qa.activity_id = a.id
+                JOIN enrollments e ON qa.enrollment_id = e.id
+                WHERE e.student_id = $1 AND e.tenant_id = $2 AND qa.status = 'completed'
+                ORDER BY qa.completed_at ASC
+                LIMIT 20
+                """,
+                student_id,
+                tenant_id,
+            )
+            evolution = [
+                ScoreEvolutionItem(
+                    date=r["date_label"],
+                    accuracy=round(float(r["score"] or 0.0), 1),
+                    activity_title=r["activity_title"],
+                )
+                for r in evo_rows
+            ]
+
+            # 2. KC Mastery breakdown
+            kc_rows = await conn.fetch(
+                """
+                SELECT 
+                    kc.id AS kc_id,
+                    kc.name AS kc_name,
+                    u.title AS unit_title,
+                    COUNT(ae.id)::int AS total_ans,
+                    COUNT(ae.id) FILTER (WHERE ae.is_correct = true)::int AS correct_ans,
+                    (
+                        SELECT p.predicted_recall_probability::float
+                        FROM predictions p
+                        WHERE p.student_id = $1 AND p.knowledge_component_id = kc.id
+                        ORDER BY p.created_at DESC
+                        LIMIT 1
+                    ) AS latest_prediction
+                FROM knowledge_components kc
+                JOIN units u ON kc.unit_id = u.id
+                JOIN sections s ON u.course_id = s.course_id
+                JOIN enrollments e ON s.id = e.section_id
+                LEFT JOIN answer_events ae ON ae.knowledge_component_id = kc.id AND ae.student_id = $1 AND ae.tenant_id = $2
+                WHERE e.student_id = $1 AND e.tenant_id = $2
+                GROUP BY kc.id, kc.name, u.title
+                ORDER BY u.title, kc.name
+                """,
+                student_id,
+                tenant_id,
+            )
+
+            kc_breakdown: list[StudentKCMasteryProgress] = []
+            for kr in kc_rows:
+                tot = kr["total_ans"]
+                cor = kr["correct_ans"]
+                acc = round((cor / tot) * 100.0, 1) if tot > 0 else 0.0
+                status_str = "Sin evaluar"
+                if tot > 0:
+                    status_str = "Consolidado" if acc >= 80.0 else ("En proceso" if acc >= 65.0 else "Refuerzo sugerido")
+
+                ret_val = kr["latest_prediction"]
+                if ret_val is not None:
+                    ret_val = round(float(ret_val) * 100.0, 1)
+
+                kc_breakdown.append(
+                    StudentKCMasteryProgress(
+                        kc_id=kr["kc_id"],
+                        kc_name=kr["kc_name"],
+                        unit_title=kr["unit_title"],
+                        observed_accuracy=acc,
+                        total_answers=tot,
+                        status=status_str,
+                        estimated_retention=ret_val,
+                        is_cold_start=tot < 3,
+                    )
+                )
+
+            # 3. Completed activity history
+            hist_rows = await conn.fetch(
+                """
+                SELECT 
+                    qa.id AS attempt_id,
+                    a.id AS activity_id,
+                    a.title AS activity_title,
+                    c.name AS course_name,
+                    qa.completed_at,
+                    qa.score,
+                    qa.status::text AS status
+                FROM quiz_attempts qa
+                JOIN activities a ON qa.activity_id = a.id
+                JOIN courses c ON a.course_id = c.id
+                JOIN enrollments e ON qa.enrollment_id = e.id
+                WHERE e.student_id = $1 AND e.tenant_id = $2 AND qa.status = 'completed'
+                ORDER BY qa.completed_at DESC
+                LIMIT 15
+                """,
+                student_id,
+                tenant_id,
+            )
+            activity_history = [
+                StudentProgressActivityHistory(
+                    attempt_id=r["attempt_id"],
+                    activity_id=r["activity_id"],
+                    activity_title=r["activity_title"],
+                    course_name=r["course_name"],
+                    completed_at=r["completed_at"],
+                    score=round(float(r["score"] or 0.0), 1),
+                    status=r["status"],
+                )
+                for r in hist_rows
+            ]
+
+            return StudentProgressDetailResponse(
+                analytics=dashboard.analytics,
+                evolution=evolution,
+                kc_breakdown=kc_breakdown,
+                activity_history=activity_history,
             )

@@ -1,17 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
-  Sparkles,
-  ChevronDown,
   TrendingUp,
   Award,
   CheckCircle,
-  Flame,
+  Clock,
+  AlertCircle,
+  Sparkles,
+  ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { mockStudentAnalytics } from "@/lib/mock-data";
+import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -19,43 +23,93 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
+  CartesianGrid,
 } from "recharts";
+import {
+  studentLearningApi,
+  StudentProgressDetailResponse,
+} from "@/lib/api/learning";
 
 export default function StudentProgressPage() {
-  const [timeRange, setTimeRange] = useState("30");
-  const data = mockStudentAnalytics;
+  const [progressData, setProgressData] = useState<StudentProgressDetailResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadProgress() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await studentLearningApi.getProgress();
+        if (isMounted) {
+          setProgressData(data);
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const msg = err instanceof Error ? err.message : "Error al cargar la telemetría de progreso";
+          setError(msg);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+    loadProgress();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-8 pb-12 animate-pulse">
+        <div className="h-8 w-64 bg-slate-200 rounded" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="h-32 bg-slate-100 rounded-2xl" />
+          <div className="h-32 bg-slate-100 rounded-2xl" />
+          <div className="h-32 bg-slate-100 rounded-2xl" />
+          <div className="h-32 bg-slate-100 rounded-2xl" />
+        </div>
+        <div className="h-64 bg-slate-100 rounded-3xl" />
+      </div>
+    );
+  }
+
+  const analytics = progressData?.analytics;
+  const evolution = progressData?.evolution || [];
+  const kcBreakdown = progressData?.kc_breakdown || [];
+  const activityHistory = progressData?.activity_history || [];
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Header with Date Filter */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Mi progreso
+            Mi progreso y retención
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Observa tus avances y decide dónde enfocar tu próximo esfuerzo.
+            Telemetría objetiva: observa tu precisión real y la dinámica estimada de retención a largo plazo.
           </p>
         </div>
-
-        <div className="relative inline-block">
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="appearance-none bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl pl-4 pr-10 py-2.5 shadow-xs focus:outline-none focus:ring-2 focus:ring-teal-600/30"
-          >
-            <option value="7">Últimos 7 días</option>
-            <option value="30">Últimos 30 días</option>
-            <option value="90">Último trimestre</option>
-          </select>
-          <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-        </div>
+        <Link href="/recommendations">
+          <Button variant="outline" className="rounded-xl text-xs gap-1.5 border-teal-200 text-teal-800 hover:bg-teal-50">
+            <Sparkles className="w-4 h-4 text-teal-600" />
+            Ver recomendaciones adaptativas
+          </Button>
+        </Link>
       </div>
 
-      {/* 4 Stat Cards */}
+      {error && (
+        <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* 4 Stat Cards (Objective Telemetry - No fabricated streaks) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Card 1: Completed Activities */}
         <Card className="rounded-2xl border-slate-200/80 p-5 shadow-xs bg-white space-y-3">
@@ -63,10 +117,11 @@ export default function StudentProgressPage() {
             Actividades completadas
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {data.completedActivities}
+            {analytics?.completed_activities_count ?? 0}
           </p>
           <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-            ↑ {data.completedThisMonth} este mes
+            <CheckCircle className="w-3.5 h-3.5" />
+            Cuestionarios evaluados
           </p>
         </Card>
 
@@ -76,10 +131,10 @@ export default function StudentProgressPage() {
             Precisión observada
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {data.observedAccuracy}%
+            {analytics?.observed_accuracy_percentage ?? 0}%
           </p>
           <p className="text-xs font-medium text-slate-400">
-            En {data.totalResponses} respuestas
+            En {analytics?.total_answers ?? 0} respuestas analizadas
           </p>
         </Card>
 
@@ -89,205 +144,213 @@ export default function StudentProgressPage() {
             Conceptos consolidados
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {data.consolidatedConcepts}
+            {analytics?.consolidated_concepts_count ?? 0}
             <span className="text-lg font-normal text-slate-400">
-              /{data.totalConcepts}
+              /{analytics?.total_concepts_count ?? 0}
             </span>
           </p>
-          <p className="text-xs font-medium text-slate-500">Ciencias</p>
+          <p className="text-xs font-medium text-teal-700">
+            Retención &gt; 80% estimada
+          </p>
         </Card>
 
-        {/* Card 4: Streak */}
+        {/* Card 4: Dedicated Learning Time */}
         <Card className="rounded-2xl border-slate-200/80 p-5 shadow-xs bg-white space-y-3">
-          <p className="text-xs font-semibold text-slate-500">Racha actual</p>
-          <p className="text-3xl font-extrabold text-slate-900">
-            {data.currentStreakDays}{" "}
-            <span className="text-lg font-normal text-slate-400">días</span>
+          <p className="text-xs font-semibold text-slate-500">
+            Tiempo de microestudio
           </p>
-          <p className="text-xs font-medium text-slate-400">
-            Tu mejor racha: {data.bestStreakDays} días
+          <p className="text-3xl font-extrabold text-slate-900">
+            {analytics?.weekly_learning_minutes ?? 0}
+            <span className="text-lg font-normal text-slate-400"> min</span>
+          </p>
+          <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5 text-teal-600" />
+            Lectura activa y repasos
           </p>
         </Card>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Evolution Chart (7 cols) */}
-        <Card className="lg:col-span-7 rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Evolución de tus resultados
-              </h2>
-              <p className="text-xs text-slate-500">
-                Porcentaje de respuestas correctas observadas
-              </p>
-            </div>
-            <Badge
-              variant="outline"
-              className="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-50 border-teal-200 self-start sm:self-auto"
-            >
-              DATOS OBSERVADOS
-            </Badge>
-          </div>
+      {/* Evolution Chart */}
+      <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Evolución de precisión en cuestionarios
+          </h2>
+          <p className="text-xs text-slate-500">
+            Puntaje observado en tus actividades evaluadas cronológicamente
+          </p>
+        </div>
 
-          <div className="h-64 w-full pt-2">
+        {evolution.length === 0 ? (
+          <div className="py-12 text-center text-xs text-slate-400">
+            <TrendingUp className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            No hay suficientes evaluaciones completadas para graficar la evolución. Resuelve tus cuestionarios pendientes para observar tu progreso.
+          </div>
+        ) : (
+          <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={data.evolutionData}
-                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-              >
+              <AreaChart data={evolution} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorAccuracy" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0d9488" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0.0} />
+                  <linearGradient id="accuracyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0A635F" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#0A635F" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={{ stroke: "#e2e8f0" }}
-                  tick={{ fill: "#64748b", fontSize: 11 }}
-                />
-                <YAxis
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
-                  tickFormatter={(val) => `${val}%`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: "#94a3b8", fontSize: 11 }}
-                />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
                 <Tooltip
                   formatter={(val: any) => [`${val}%`, "Precisión"]}
-                  contentStyle={{
-                    borderRadius: "12px",
-                    border: "1px solid #e2e8f0",
-                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.05)",
-                    fontSize: "12px",
-                  }}
+                  labelFormatter={(_label, payload) => payload?.[0]?.payload?.activity_title || _label}
                 />
                 <Area
                   type="monotone"
                   dataKey="accuracy"
-                  stroke="#0f766e"
-                  strokeWidth={3}
+                  stroke="#0A635F"
+                  strokeWidth={2.5}
                   fillOpacity={1}
-                  fill="url(#colorAccuracy)"
+                  fill="url(#accuracyGrad)"
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </Card>
+        )}
+      </Card>
 
-        {/* Concept Breakdown Donut (5 cols) */}
-        <Card className="lg:col-span-5 rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6 flex flex-col justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">
-              Estado de conceptos
-            </h2>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 py-2">
-            {/* Donut Chart */}
-            <div className="relative w-44 h-44 flex items-center justify-center flex-shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={data.conceptStatusBreakdown}
-                    innerRadius={52}
-                    outerRadius={68}
-                    paddingAngle={4}
-                    dataKey="count"
-                  >
-                    {data.conceptStatusBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-extrabold text-slate-900">
-                  {data.totalConcepts}
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">
-                  conceptos
-                </span>
-              </div>
-            </div>
-
-            {/* Legend list */}
-            <div className="space-y-3">
-              {data.conceptStatusBreakdown.map((item) => (
-                <div key={item.status} className="flex items-center gap-2 text-xs">
-                  <div
-                    className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-slate-600 font-medium">{item.status}</span>
-                  <span className="text-slate-900 font-bold ml-auto pl-4">
-                    {item.count}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Empathetic Clarification */}
-          <div className="rounded-2xl bg-[#f5f3ff] p-4 border border-[#ede9fe] flex items-start gap-3">
-            <Sparkles className="w-4 h-4 text-[#7c3aed] flex-shrink-0 mt-0.5" />
-            <div className="text-[11px] leading-relaxed text-[#5b21b6]">
-              <strong className="font-semibold">Estimación orientativa:</strong>{" "}
-              La retención estimada complementa, pero no reemplaza, tus
-              resultados reales.
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Historial de Repasos Table */}
+      {/* Knowledge Component Breakdown: Differentiating Observed Accuracy vs Estimated Retention */}
       <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            Historial de repasos
+          <h2 className="text-xl font-bold text-slate-900">
+            Estado de componentes de conocimiento (KC)
           </h2>
-          <p className="text-xs text-slate-500">Tus últimas actividades</p>
+          <p className="text-xs text-slate-500">
+            Diferenciación entre respuestas observadas y probabilidad de retención proyectada (DAS3H / PFA)
+          </p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-100 text-slate-400 uppercase font-bold tracking-wider text-[10px]">
-                <th className="pb-3 pr-4 font-semibold">CONCEPTO</th>
-                <th className="pb-3 px-4 font-semibold">FECHA</th>
-                <th className="pb-3 px-4 font-semibold">RESULTADO OBSERVADO</th>
-                <th className="pb-3 pl-4 font-semibold text-right">ESTADO</th>
+              <tr className="border-b border-slate-100 text-slate-400 uppercase font-bold tracking-wider text-[10px] bg-slate-50/50">
+                <th className="py-3 px-4 font-semibold">TEMA / CONCEPTO</th>
+                <th className="py-3 px-4 font-semibold">UNIDAD</th>
+                <th className="py-3 px-4 font-semibold">RESPUESTAS (N)</th>
+                <th className="py-3 px-4 font-semibold">PRECISIÓN OBSERVADA</th>
+                <th className="py-3 px-4 font-semibold">ESTIMACIÓN DE RETENCIÓN</th>
+                <th className="py-3 px-4 text-right font-semibold">ESTADO</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.history.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="py-4 pr-4 font-bold text-slate-900">
-                    {row.concept}
-                  </td>
-                  <td className="py-4 px-4 text-slate-500 font-medium">
-                    {row.date}
-                  </td>
-                  <td className="py-4 px-4 font-semibold text-slate-700">
-                    {row.observedResult}
-                  </td>
-                  <td className="py-4 pl-4 text-right">
-                    <Badge
-                      variant={row.status === "Consolidado" ? "active" : "lavender"}
-                      className="text-[11px] font-semibold"
-                    >
-                      {row.status}
-                    </Badge>
+              {kcBreakdown.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    No se han registrado componentes de conocimiento en este periodo.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                kcBreakdown.map((kc) => (
+                  <tr key={kc.kc_id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="py-3.5 px-4 font-semibold text-slate-900">
+                      {kc.kc_name}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-500">
+                      {kc.unit_title}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono text-slate-700">
+                      {kc.total_answers}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-800">{kc.observed_accuracy}%</span>
+                        <div className="w-16">
+                          <Progress value={kc.observed_accuracy} className="h-1.5" />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {kc.is_cold_start ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          Fase inicial (requiere más respuestas)
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-teal-800">
+                          {kc.estimated_retention !== null ? `${kc.estimated_retention}%` : "—"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <Badge
+                        variant={
+                          kc.status === "Consolidado"
+                            ? "success"
+                            : kc.status === "Refuerzo sugerido"
+                            ? "warning"
+                            : "secondary"
+                        }
+                        className="text-[10px]"
+                      >
+                        {kc.status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* Completed Activities History */}
+      <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Historial de cuestionarios completados
+          </h2>
+          <p className="text-xs text-slate-500">
+            Registro cronológico inmutable de intentos y retroalimentación
+          </p>
+        </div>
+
+        {activityHistory.length === 0 ? (
+          <p className="text-xs text-slate-400 py-4">Aún no has completado cuestionarios en tus cursos.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 text-slate-400 uppercase font-bold tracking-wider text-[10px]">
+                  <th className="py-3 px-4 font-semibold">CUESTIONARIO</th>
+                  <th className="py-3 px-4 font-semibold">CURSO</th>
+                  <th className="py-3 px-4 font-semibold">FECHA</th>
+                  <th className="py-3 px-4 font-semibold">PUNTAJE</th>
+                  <th className="py-3 px-4 text-right font-semibold">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {activityHistory.map((item) => (
+                  <tr key={item.attempt_id} className="hover:bg-slate-50/60">
+                    <td className="py-3.5 px-4 font-semibold text-slate-900">
+                      {item.activity_title}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-500">{item.course_name}</td>
+                    <td className="py-3.5 px-4 text-slate-400 font-mono">
+                      {new Date(item.completed_at).toLocaleDateString("es-PE")}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className="font-bold text-slate-900">{item.score}%</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <Link href={`/quiz/${item.activity_id}/results?attempt_id=${item.attempt_id}`}>
+                        <Button variant="ghost" size="sm" className="text-xs text-teal-700 hover:text-teal-900">
+                          Revisar respuestas
+                        </Button>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );

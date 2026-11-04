@@ -147,3 +147,96 @@ VALUES
     ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'Convertir directamente el oxígeno en dióxido de carbono.', false, 3),
     ('00000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000001', 'Transportar minerales desde las raíces hasta las hojas.', false, 4)
 ON CONFLICT (id) DO NOTHING;
+
+-- 8. Microcontenido Canónico de Fotosíntesis (M5.4)
+INSERT INTO microcontents (
+    id, tenant_id, knowledge_component_id, title, content_type,
+    content_body, estimated_duration_seconds, created_by, is_published, created_at
+) VALUES (
+    'a1000000-0000-0000-0000-000000000001',
+    'a0000000-0000-0000-0000-000000000001',
+    'f0000000-0000-0000-0000-000000000001',
+    'Fotosíntesis: Transformación de Energía Solar en Glucosa',
+    'text_summary'::content_type_enum,
+    '{
+        "summary": "Comprensión integral de cómo las células vegetales convierten compuestos inorgánicos en energía química.",
+        "sections": [
+            {
+                "id": 1,
+                "navTitle": "Idea principal",
+                "heading": "La fotosíntesis como base de la vida",
+                "tag": "FOTOSÍNTESIS",
+                "lead": "Las células vegetales convierten compuestos inorgánicos simples en moléculas energéticas ricas en enlaces de carbono.",
+                "durationMinutes": 2
+            },
+            {
+                "id": 2,
+                "navTitle": "El proceso",
+                "heading": "La luz se transforma en alimento",
+                "tag": "FOTOSÍNTESIS",
+                "lead": "Las plantas capturan energía del sol y la usan para producir glucosa a partir de agua y dióxido de carbono.",
+                "durationMinutes": 4,
+                "formula": "6CO₂  +  6H₂O  —luz→  C₆H₁₂O₆  +  6O₂",
+                "analogy": {
+                    "title": "Piensa en un panel solar natural",
+                    "body": "Así como un panel captura luz para producir electricidad, la clorofila de las hojas captura luz para producir energía química almacenada en la glucosa."
+                },
+                "keyTakeaways": [
+                    {"number": "01", "text": "Ocurre principalmente en las hojas, dentro de los cloroplastos."},
+                    {"number": "02", "text": "Necesita luz, agua y dióxido de carbono."},
+                    {"number": "03", "text": "Produce glucosa y libera oxígeno a la atmósfera."}
+                ]
+            },
+            {
+                "id": 3,
+                "navTitle": "Estructura celular",
+                "heading": "La hoja bajo el microscopio",
+                "tag": "ESTOMAS Y CLOROPLASTOS",
+                "lead": "A través de los estomas entra el dióxido de carbono y sale el oxígeno liberado a la atmósfera.",
+                "durationMinutes": 2
+            },
+            {
+                "id": 4,
+                "navTitle": "Ideas clave",
+                "heading": "Síntesis para retención a largo plazo",
+                "tag": "CONSOLIDACIÓN",
+                "lead": "Comprender la diferencia entre fuente de materia y fuente de energía es la clave para dominar este concepto.",
+                "durationMinutes": 2
+            }
+        ]
+    }'::jsonb,
+    240,
+    'd0000000-0000-0000-0000-000000000001',
+    true,
+    now()
+) ON CONFLICT (id) DO NOTHING;
+
+-- 9. Actividad Canónica Publicada (M5.4)
+INSERT INTO activities (
+    id, tenant_id, course_id, created_by, title, description,
+    status, activity_type, feedback_policy, max_attempts, time_limit_minutes, published_at
+) VALUES (
+    'ac700000-0000-0000-0000-000000000001',
+    'a0000000-0000-0000-0000-000000000001',
+    'c0000000-0000-0000-0000-000000000001',
+    'd0000000-0000-0000-0000-000000000001',
+    'Comprobación Activa: Fundamentos de Fotosíntesis',
+    'Cuestionario breve formativo para comprobar la asimilación conceptual de la fotosíntesis y reactivos lumínicos.',
+    'published'::activity_status_enum,
+    'practice'::activity_type_enum,
+    'immediate_with_explanation'::feedback_policy_enum,
+    3,
+    10,
+    now()
+) ON CONFLICT (id) DO NOTHING;
+
+-- Vincular pregunta a la actividad
+INSERT INTO activity_questions (activity_id, question_id, order_index)
+VALUES ('ac700000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 1)
+ON CONFLICT (activity_id, question_id) DO NOTHING;
+
+-- Vincular sección a la actividad
+INSERT INTO activity_sections (tenant_id, activity_id, section_id)
+VALUES ('a0000000-0000-0000-0000-000000000001', 'ac700000-0000-0000-0000-000000000001', '5ec00000-0000-0000-0000-000000000001')
+ON CONFLICT (activity_id, section_id) DO NOTHING;
+

@@ -29,6 +29,7 @@ export function Sidebar() {
   const studentNavItems = [
     { label: "Inicio", href: "/dashboard", icon: Home },
     { label: "Mis cursos", href: "/courses", icon: BookOpen },
+    { label: "Recomendaciones", href: "/recommendations", icon: Sparkles },
     { label: "Mi progreso", href: "/progress", icon: BarChart2 },
     { label: "Estados del sistema", href: "/system-status", icon: Layers },
   ];

@@ -188,3 +188,91 @@ class StudentCourseItem(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class StudentCourseCard(BaseModel):
+    """Enriched course card with progress and active activity count."""
+    course_id: UUID
+    course_code: str
+    course_name: str
+    description: str | None = None
+    section_id: UUID
+    section_name: str
+    units_count: int = 0
+    kcs_count: int = 0
+    active_activities_count: int = 0
+    completed_activities_count: int = 0
+    progress_percentage: float = 0.0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UpcomingReviewItem(BaseModel):
+    """Upcoming spaced repetition review item for the student."""
+    recommendation_id: UUID | None = None
+    knowledge_component_id: UUID
+    knowledge_component_name: str
+    course_name: str
+    scheduled_for: datetime | None = None
+    estimated_minutes: int = 5
+    is_urgent: bool = False
+    priority_label: str = "Recomendado"
+
+
+class StudentAnalyticsSummary(BaseModel):
+    """Objective aggregate learning telemetry without fabricated streaks."""
+    weekly_learning_minutes: int = 0
+    completed_activities_count: int = 0
+    total_answers: int = 0
+    observed_accuracy_percentage: float = 0.0
+    reviewed_concepts_count: int = 0
+    consolidated_concepts_count: int = 0
+    total_concepts_count: int = 0
+
+
+class StudentDashboardResponse(BaseModel):
+    """Consolidated payload for student dashboard."""
+    student_name: str
+    student_code: str | None = None
+    enrolled_courses: list[StudentCourseCard]
+    analytics: StudentAnalyticsSummary
+    upcoming_reviews: list[UpcomingReviewItem]
+    recent_activities: list[StudentActivityListItem]
+
+
+class ScoreEvolutionItem(BaseModel):
+    """Score progress entry for evolution chart."""
+    date: str
+    accuracy: float
+    activity_title: str
+
+
+class StudentKCMasteryProgress(BaseModel):
+    """Breakdown of Knowledge Component progress differentiating observed vs retention."""
+    kc_id: UUID
+    kc_name: str
+    unit_title: str
+    observed_accuracy: float
+    total_answers: int
+    status: str
+    estimated_retention: float | None = None
+    is_cold_start: bool = True
+
+
+class StudentProgressActivityHistory(BaseModel):
+    """Historical quiz attempt completed by the student."""
+    attempt_id: UUID
+    activity_id: UUID
+    activity_title: str
+    course_name: str
+    completed_at: datetime
+    score: float
+    status: str
+
+
+class StudentProgressDetailResponse(BaseModel):
+    """Comprehensive progress view separating observed performance from retention estimation."""
+    analytics: StudentAnalyticsSummary
+    evolution: list[ScoreEvolutionItem]
+    kc_breakdown: list[StudentKCMasteryProgress]
+    activity_history: list[StudentProgressActivityHistory]
+
