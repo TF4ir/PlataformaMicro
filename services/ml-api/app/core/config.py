@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = "http://localhost:54321"
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = "super-secret-jwt-token-with-at-least-32-characters-long"
+    # Optional override. Derived from SUPABASE_URL when empty:
+    # {SUPABASE_URL}/auth/v1/.well-known/jwks.json
+    SUPABASE_JWKS_URL: str = ""
     DEFAULT_LEASE_DURATION_SECONDS: int = 300
     MAX_JOB_ATTEMPTS: int = 3
     REPOSITORY_BACKEND: str = "postgres"  # "postgres" | "memory"

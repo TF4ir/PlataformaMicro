@@ -25,7 +25,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
   BarChart,
   Bar,
 } from "recharts";
@@ -302,45 +301,61 @@ export default function TeacherReportsPage() {
           </div>
         </Card>
 
-        {/* Chart 2: Retention Growth Trajectory */}
+        {/* Chart 2: Observed Weekly Retention Trajectory */}
         <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
-              Trayectoria de retención temporal
+              Trayectoria de retención observada
             </h2>
             <p className="text-xs text-slate-500">
-              Proyección con repasos espaciados vs. decaimiento natural de la curva del olvido
+              Precisión semanal calculada sobre answer_events. Sin proyecciones
+              hasta validar el modelo predictivo.
             </p>
           </div>
 
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trajectory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis domain={[20, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip formatter={(val: any) => [`${val}%`, ""]} />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
-                <Line
-                  type="monotone"
-                  dataKey="projected_with_review"
-                  name="Con repaso adaptativo (DAS3H)"
-                  stroke="#0A635F"
-                  strokeWidth={2.5}
-                  dot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="projected_without_review"
-                  name="Sin repaso (Curva de olvido)"
-                  stroke="#e11d48"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                  dot={{ r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {trajectory.every((point) => point.historical_observed === null) ? (
+            <div className="h-72 flex flex-col items-center justify-center text-center gap-2 rounded-2xl bg-slate-50 border border-dashed border-slate-200 px-6">
+              <BarChart3 className="w-8 h-8 text-slate-400" />
+              <p className="text-sm font-semibold text-slate-800">
+                Aún no hay evidencia semanal
+              </p>
+              <p className="text-xs text-slate-500 max-w-sm">
+                Cuando los estudiantes respondan actividades, aquí aparecerá la
+                precisión observada por semana.
+              </p>
+            </div>
+          ) : (
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trajectory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11, fill: "#64748b" }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
+                  <Tooltip
+                    formatter={(value) => [
+                      value === null || value === undefined ? "Sin datos" : `${value}%`,
+                      "Precisión observada",
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="historical_observed"
+                    name="Precisión observada"
+                    stroke="#0A635F"
+                    strokeWidth={2.5}
+                    dot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            La curva de olvido proyectada se habilitará cuando exista un modelo
+            entrenado y validado (DAS3H/PFA/BKT). Este reporte no presenta
+            valores predictivos inventados.
+          </p>
         </Card>
       </div>
     </div>

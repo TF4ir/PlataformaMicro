@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { UserRole } from "@/types/ui";
 import { useRouter, usePathname } from "next/navigation";
-import { mockStudent, mockTeacher } from "@/lib/mock-data";
 
 interface AuthUser {
   id: string;

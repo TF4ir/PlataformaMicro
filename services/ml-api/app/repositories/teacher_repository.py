@@ -603,14 +603,55 @@ class TeacherRepository:
                     lowest_kc_acc = acc
                     lowest_kc_name = k.name
 
-            # 6. Retention Growth Trajectory (Historical vs Projected with/without review)
-            growth_trajectory = [
-                GrowthTrajectoryItem(period="Semana 1", historical_observed=70.0, projected_with_review=75.0, projected_without_review=68.0),
-                GrowthTrajectoryItem(period="Semana 2", historical_observed=74.0, projected_with_review=80.0, projected_without_review=65.0),
-                GrowthTrajectoryItem(period="Semana 3", historical_observed=78.0, projected_with_review=84.0, projected_without_review=62.0),
-                GrowthTrajectoryItem(period="Semana 4", historical_observed=None, projected_with_review=88.0, projected_without_review=58.0),
-                GrowthTrajectoryItem(period="Semana 5", historical_observed=None, projected_with_review=90.0, projected_without_review=55.0),
-            ]
+            # 6. Observed Weekly Trajectory (last 5 calendar weeks).
+            # No projected curve is fabricated: projections require a validated
+            # model artifact and are intentionally omitted from the MVP.
+            weekly_rows = await conn.fetch(
+                """
+                WITH week_bounds AS (
+                    SELECT (date_trunc('week', now()) - (n || ' weeks')::interval) AS week_start
+                    FROM generate_series(4, 0, -1) AS n
+                ),
+                weekly AS (
+                    SELECT
+                        wb.week_start,
+                        COUNT(ae.id)::int AS total_answers,
+                        COUNT(ae.id) FILTER (WHERE ae.is_correct = true)::int AS correct_answers
+                    FROM week_bounds wb
+                    LEFT JOIN answer_events ae
+                        ON ae.tenant_id = $1
+                       AND ae.event_timestamp >= wb.week_start
+                       AND ae.event_timestamp < wb.week_start + interval '1 week'
+                       AND ae.student_id IN (
+                           SELECT e.student_id
+                           FROM enrollments e
+                           WHERE e.section_id = ANY($2)
+                       )
+                    GROUP BY wb.week_start
+                )
+                SELECT week_start, total_answers, correct_answers
+                FROM weekly
+                ORDER BY week_start ASC;
+                """,
+                tenant_id,
+                active_sec_ids,
+            )
+
+            growth_trajectory: list[GrowthTrajectoryItem] = []
+            for row in weekly_rows:
+                total_answers = int(row["total_answers"] or 0)
+                correct_answers = int(row["correct_answers"] or 0)
+                growth_trajectory.append(
+                    GrowthTrajectoryItem(
+                        period=row["week_start"].strftime("%d/%m"),
+                        historical_observed=(
+                            round(correct_answers / total_answers * 100.0, 1)
+                            if total_answers > 0
+                            else None
+                        ),
+                        sample_size=total_answers,
+                    )
+                )
 
             # AI Insight
             if lowest_kc_name:
@@ -621,8 +662,8 @@ class TeacherRepository:
                 )
             else:
                 insight = TeacherAiInsight(
-                    title="Progreso General Estable",
-                    message="Las secciones evaluadas muestran una dinámica de retención favorable. Los repasos preventivos programados están respondiendo adecuadamente.",
+                    title="Evidencia insuficiente",
+                    message="Aún no hay respuestas registradas en las secciones evaluadas. Aplica una actividad para comenzar a recoger evidencia de aprendizaje.",
                     recommended_focus_kc=None,
                 )
 

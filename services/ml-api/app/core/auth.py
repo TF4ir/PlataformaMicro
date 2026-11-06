@@ -1,9 +1,11 @@
 """Authentication and authorization dependencies for FastAPI endpoints.
 
-Implements Milestone M4.2:
-- Cryptographic verification of Supabase HS256 JWT tokens.
+Implements Milestone M4.2 + MVP hardening:
+- Cryptographic verification of Supabase JWTs using JWKS (ES256/RS256) and
+  HS256 legacy secrets. Supabase projects created after October 2025 sign
+  access tokens with asymmetric ES256 keys and publish them via JWKS.
 - Authoritative resolution of tenant, roles, and course permissions from PostgreSQL.
-- Strict rejection of proxy identity headers in production environments (fail-closed).
+- Strict rejection of proxy identity headers in production/demo environments (fail-closed).
 - Retention of proxy headers strictly for development and test execution.
 - Prevention of identity spoofing or header overriding over verified JWTs.
 """
@@ -12,15 +14,92 @@ import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Annotated
+from functools import lru_cache
+from typing import Annotated, Any
 
 import asyncpg
 import jwt
 from fastapi import Depends, Header, HTTPException, status
+from jwt import PyJWKClient
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Algorithms accepted from Supabase-issued access tokens.
+_ASYMMETRIC_ALGORITHMS = frozenset({"ES256", "RS256"})
+
+
+def _jwks_url() -> str:
+    """Resolve the Supabase JWKS endpoint for the configured project."""
+    if settings.SUPABASE_JWKS_URL:
+        return settings.SUPABASE_JWKS_URL
+    return f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+
+
+@lru_cache(maxsize=8)
+def _get_jwks_client(jwks_url: str) -> PyJWKClient:
+    """Cache one JWKS client per URL (PyJWT caches the fetched keys internally)."""
+    return PyJWKClient(jwks_url)
+
+
+def _get_jwks_signing_key(token: str) -> Any:
+    """Resolve the signing key for an asymmetric Supabase token via JWKS."""
+    return _get_jwks_client(_jwks_url()).get_signing_key_from_jwt(token)
+
+
+def decode_supabase_jwt(token: str) -> dict[str, Any]:
+    """Verify and decode a Supabase access token.
+
+    Supports the two signing schemes used by Supabase:
+    - ES256/RS256 (new projects): public key resolved from the project JWKS.
+    - HS256 (legacy projects): shared JWT secret.
+
+    Raises ``jwt.PyJWTError`` for invalid tokens so the caller can map them to
+    RFC 7807 responses. Expired tokens raise ``jwt.ExpiredSignatureError``.
+    """
+    is_prod = settings.ENVIRONMENT.lower() == "production"
+
+    header = jwt.get_unverified_header(token)
+    algorithm = str(header.get("alg", ""))
+
+    if algorithm == "HS256":
+        if settings.SUPABASE_JWT_SECRET:
+            return jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False, "verify_exp": True},
+            )
+        if is_prod:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/server-misconfigured",
+                    "title": "Error de Configuración",
+                    "status": 500,
+                    "detail": "El secreto de verificación JWT no está configurado en el servidor.",
+                    "code": "JWT_SECRET_MISSING",
+                },
+            )
+        # Development/testing without configured secret: inspect claims only.
+        return jwt.decode(
+            token,
+            options={"verify_signature": False, "verify_exp": True},
+        )
+
+    if algorithm in _ASYMMETRIC_ALGORITHMS:
+        signing_key = _get_jwks_signing_key(token)
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=[algorithm],
+            options={"verify_aud": False, "verify_exp": True},
+        )
+
+    raise jwt.InvalidAlgorithmError(
+        f"Unsupported JWT signing algorithm: {algorithm or 'missing'}"
+    )
 
 
 @dataclass
@@ -56,35 +135,9 @@ async def get_current_user(
     # --------------------------------------------------------------------------
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split("Bearer ", 1)[1].strip()
-        is_prod = settings.ENVIRONMENT.lower() == "production"
-
-        if is_prod and not settings.SUPABASE_JWT_SECRET:
-            logger.error("SUPABASE_JWT_SECRET is not configured in production environment.")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={
-                    "type": "https://api.plataformamicro.edu.pe/errors/server-misconfigured",
-                    "title": "Error de Configuración",
-                    "status": 500,
-                    "detail": "El secreto de verificación JWT no está configurado en el servidor.",
-                    "code": "JWT_SECRET_MISSING",
-                },
-            )
 
         try:
-            if settings.SUPABASE_JWT_SECRET:
-                payload = jwt.decode(
-                    token,
-                    settings.SUPABASE_JWT_SECRET,
-                    algorithms=["HS256"],
-                    options={"verify_aud": False, "verify_exp": True},
-                )
-            else:
-                # In development or testing without configured secret, decode payload without signature verification
-                payload = jwt.decode(
-                    token,
-                    options={"verify_signature": False, "verify_exp": True},
-                )
+            payload = decode_supabase_jwt(token)
         except jwt.ExpiredSignatureError as e:
             logger.warning("Supabase JWT expired: %s", e)
             raise HTTPException(

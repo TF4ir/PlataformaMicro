@@ -25,12 +25,14 @@ services:
   # Microservicio Predictivo & Adaptativo (FastAPI)
   ml-api:
     build:
-      context: ./services/ml-api
-      dockerfile: Dockerfile
+      # Root context is required: the service imports the monorepo-level `ml` package.
+      context: .
+      dockerfile: services/ml-api/Dockerfile
     container_name: microlearning-ml-api
     restart: unless-stopped
     environment:
       - ENVIRONMENT=development
+      - PYTHONPATH=/app
       - API_V1_PREFIX=/api/v1
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       - SUPABASE_URL=${SUPABASE_URL:-http://localhost:54321}
@@ -49,6 +51,7 @@ services:
       - "${ML_API_PORT:-8000}:8000"
     volumes:
       - ./services/ml-api:/app
+      - ./ml:/app/ml:ro
       - ./packages/contracts:/contracts:ro
     depends_on:
       postgres:
@@ -64,13 +67,14 @@ services:
   # Worker Asíncrono de Generación Curricular (Background Daemon Independiente)
   ml-worker:
     build:
-      context: ./services/ml-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/ml-api/Dockerfile
     container_name: microlearning-ml-worker
     restart: unless-stopped
     command: ["python", "-m", "app.content_generation.worker"]
     environment:
       - ENVIRONMENT=development
+      - PYTHONPATH=/app
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       - SUPABASE_URL=${SUPABASE_URL:-http://localhost:54321}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_service}
@@ -83,6 +87,7 @@ services:
       - LLM_MAX_OUTPUT_TOKENS=${LLM_MAX_OUTPUT_TOKENS:-4096}
     volumes:
       - ./services/ml-api:/app
+      - ./ml:/app/ml:ro
     depends_on:
       postgres:
         condition: service_healthy

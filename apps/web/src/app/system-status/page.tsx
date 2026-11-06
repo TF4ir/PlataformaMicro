@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Server,
   Cpu,
@@ -14,10 +14,62 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { mockSystemStatus } from "@/lib/mock-data";
+import { API_BASE_URL } from "@/lib/api/client";
+import { SystemStatusData } from "@/types/ui";
+
+const INITIAL_STATUS: SystemStatusData = {
+  apiStatus: "degraded",
+  coldStartEstimatedSeconds: 0,
+  activeModel: "RuleBased_Fallback",
+  inferenceLatencyMs: 0,
+  supabaseRlsStatus: "active_enforced",
+  pseudonymizationStatus: "compliant_law_29733",
+  lastHeartbeat: "Verificando…",
+};
 
 export default function SystemStatusPage() {
-  const status = mockSystemStatus;
+  const [status, setStatus] = useState<SystemStatusData>(INITIAL_STATUS);
+  const [isChecking, setIsChecking] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    setIsChecking(true);
+    const startedAt = performance.now();
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 10000);
+      const response = await fetch(`${API_BASE_URL}/api/v1/health`, {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      window.clearTimeout(timeout);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      setStatus({
+        apiStatus: "healthy",
+        coldStartEstimatedSeconds: 0,
+        activeModel: "RuleBased_Fallback",
+        inferenceLatencyMs: Math.round(performance.now() - startedAt),
+        supabaseRlsStatus: "active_enforced",
+        pseudonymizationStatus: "compliant_law_29733",
+        lastHeartbeat: new Date().toLocaleTimeString("es-PE"),
+      });
+    } catch {
+      setStatus((previous) => ({
+        ...previous,
+        apiStatus: "degraded",
+        inferenceLatencyMs: 0,
+        lastHeartbeat: new Date().toLocaleTimeString("es-PE"),
+      }));
+    } finally {
+      setIsChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  const isHealthy = status.apiStatus === "healthy";
 
   return (
     <div className="space-y-8 pb-12">
@@ -39,24 +91,40 @@ export default function SystemStatusPage() {
         <Button
           variant="outline"
           className="rounded-xl text-xs font-semibold gap-2 self-start sm:self-auto"
-          onClick={() => window.location.reload()}
+          onClick={() => void loadStatus()}
+          disabled={isChecking}
         >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Actualizar telemetría
+          <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? "animate-spin" : ""}`} />
+          {isChecking ? "Verificando…" : "Actualizar telemetría"}
         </Button>
       </div>
 
       {/* Main Status Hero */}
       <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 shadow-xs bg-white space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-3.5 w-3.5 rounded-full bg-emerald-500 animate-ping" />
-            <h2 className="text-xl font-bold text-slate-900">
-              Todos los subsistemas operativos
-            </h2>
+            <div
+              className={`h-3.5 w-3.5 rounded-full ${
+                isHealthy ? "bg-emerald-500 animate-ping" : "bg-amber-500"
+              }`}
+            />
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">
+                {isHealthy
+                  ? "Servicio de inferencia operativo"
+                  : "Servicio de inferencia no disponible"}
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Última verificación: {status.lastHeartbeat}
+                {isHealthy ? ` · Latencia ${status.inferenceLatencyMs} ms` : ""}
+              </p>
+            </div>
           </div>
-          <Badge variant="active" className="text-xs px-3 py-1">
-            Salud: 100%
+          <Badge
+            variant={isHealthy ? "active" : "outline"}
+            className="text-xs px-3 py-1"
+          >
+            {isHealthy ? "API: OK" : "API: sin conexión"}
           </Badge>
         </div>
 
@@ -66,8 +134,8 @@ export default function SystemStatusPage() {
           <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
             <div className="flex items-center justify-between">
               <Server className="w-5 h-5 text-teal-700" />
-              <Badge variant="active" className="text-[10px]">
-                Activo
+              <Badge variant={isHealthy ? "active" : "outline"} className="text-[10px]">
+                {isHealthy ? "Activo" : "Sin conexión"}
               </Badge>
             </div>
             <div>
@@ -82,8 +150,16 @@ export default function SystemStatusPage() {
                 <strong className="text-slate-900">{status.inferenceLatencyMs} ms</strong>
               </p>
               <p className="flex justify-between">
-                <span>Riesgo de cold start:</span>
-                <span className="text-emerald-700 font-semibold">0 s (Caliente)</span>
+                <span>Estado del servicio:</span>
+                <span
+                  className={
+                    isHealthy
+                      ? "text-emerald-700 font-semibold"
+                      : "text-amber-700 font-semibold"
+                  }
+                >
+                  {isHealthy ? "En línea" : "Reintentar"}
+                </span>
               </p>
             </div>
           </div>
@@ -93,7 +169,7 @@ export default function SystemStatusPage() {
             <div className="flex items-center justify-between">
               <Cpu className="w-5 h-5 text-purple-700" />
               <Badge variant="lavender" className="text-[10px]">
-                DAS3H
+                Modo demo
               </Badge>
             </div>
             <div>
@@ -105,11 +181,11 @@ export default function SystemStatusPage() {
             <div className="pt-2 text-[11px] text-slate-600 space-y-1 border-t border-slate-200/60">
               <p className="flex justify-between">
                 <span>Política activa:</span>
-                <strong className="text-slate-900">DAS3H Candidate</strong>
+                <strong className="text-slate-900">Reglas pedagógicas</strong>
               </p>
               <p className="flex justify-between">
-                <span>Modo de fallback:</span>
-                <span className="text-slate-500">Reglas disponible</span>
+                <span>Modelo predictivo:</span>
+                <span className="text-slate-500">Pendiente de validación</span>
               </p>
             </div>
           </div>

@@ -139,10 +139,15 @@ class KCPerformanceItem(BaseModel):
 
 
 class GrowthTrajectoryItem(BaseModel):
+    """Weekly observed accuracy from immutable answer_events.
+
+    Projected curves are intentionally absent until a validated predictive
+    model exists. This prevents fabricated retention numbers in teacher reports.
+    """
+
     period: str
     historical_observed: float | None = None
-    projected_with_review: float
-    projected_without_review: float
+    sample_size: int = 0
 
 
 class TeacherReportsResponse(BaseModel):

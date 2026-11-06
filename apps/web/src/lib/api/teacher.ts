@@ -127,9 +127,10 @@ export interface KCPerformanceItem {
 
 export interface GrowthTrajectoryItem {
   period: string;
+  /** Observed weekly accuracy (0-100). Null when the week has no answers. */
   historical_observed: number | null;
-  projected_with_review: number;
-  projected_without_review: number;
+  /** Number of answer_events backing the observation. */
+  sample_size: number;
 }
 
 export interface TeacherReportsResponse {

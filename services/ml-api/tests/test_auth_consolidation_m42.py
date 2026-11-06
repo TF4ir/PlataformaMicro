@@ -277,3 +277,105 @@ async def test_09_proxy_headers_strictly_rejected_in_production():
             assert body["code"] == "PROXY_HEADERS_FORBIDDEN"
     finally:
         settings.ENVIRONMENT = orig_env
+
+
+# ==============================================================================
+# M4.2 HARDENING — ASYMMETRIC SUPABASE TOKENS (ES256 / JWKS)
+# ==============================================================================
+
+
+def create_ec_jwt(
+    user_id: str,
+    private_key,
+    *,
+    email: str = "student_a1@nexo.edu.pe",
+    role: str = "student",
+    expires_in_seconds: int = 3600,
+) -> str:
+    """Generate an ES256 token matching the payload shape issued by Supabase."""
+    now = datetime.now(UTC)
+    payload = {
+        "iss": "https://example.supabase.co/auth/v1",
+        "sub": user_id,
+        "aud": "authenticated",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=expires_in_seconds)).timestamp()),
+        "email": email,
+        "role": "authenticated",
+        "app_metadata": {"provider": "email", "role": role},
+        "user_metadata": {"role": role},
+    }
+    return jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": "test-key"})
+
+
+@pytest.mark.asyncio
+async def test_10_es256_jwt_verified_via_jwks(monkeypatch):
+    """A Supabase-style ES256 token is accepted when its key resolves through JWKS."""
+    from types import SimpleNamespace
+
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    import app.core.auth as auth_mod
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    token = create_ec_jwt(STUDENT_A1, private_key)
+    monkeypatch.setattr(
+        auth_mod,
+        "_get_jwks_signing_key",
+        lambda _token: SimpleNamespace(key=private_key.public_key()),
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/students/me/courses",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_11_expired_es256_jwt_rejected(monkeypatch):
+    """Expired ES256 tokens are rejected with TOKEN_EXPIRED after key resolution."""
+    from types import SimpleNamespace
+
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    import app.core.auth as auth_mod
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    token = create_ec_jwt(STUDENT_A1, private_key, expires_in_seconds=-60)
+    monkeypatch.setattr(
+        auth_mod,
+        "_get_jwks_signing_key",
+        lambda _token: SimpleNamespace(key=private_key.public_key()),
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/students/me/courses",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 401
+        assert res.json()["code"] == "TOKEN_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_12_unsupported_jwt_algorithm_rejected():
+    """Algorithms outside the Supabase contract are rejected with INVALID_CREDENTIALS."""
+    token = create_test_jwt(STUDENT_A1)
+    # Re-sign with an algorithm the backend does not accept.
+    import jwt as pyjwt
+
+    payload = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
+    unsupported = pyjwt.encode(payload, "another-secret-long-enough-for-hs512", algorithm="HS512")
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/students/me/courses",
+            headers={"Authorization": f"Bearer {unsupported}"},
+        )
+        assert res.status_code == 401
+        assert res.json()["code"] == "INVALID_CREDENTIALS"

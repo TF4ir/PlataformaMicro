@@ -6,7 +6,7 @@ Plataforma de Microaprendizaje Adaptativo — Nexo Platform
 Verifies:
 1. Presence of all 10 core views and layouts corresponding to Capturas/
 2. Design system tokens in globals.css, theme in tailwind.config.ts
-3. Complete mock datasets in mock-data.ts (Lucía Mendoza, Ciencias pilot)
+3. Real API clients and absence of mock datasets in production views
 4. TypeScript compilation (tsc --noEmit)
 5. Next.js production build output (next build)
 """
@@ -35,7 +35,7 @@ def main():
     required_components = [
         "lib/utils.ts",
         "lib/role-context.tsx",
-        "lib/mock-data.ts",
+        "lib/api/client.ts",
         "types/ui.ts",
         "app/globals.css",
         "app/layout.tsx",

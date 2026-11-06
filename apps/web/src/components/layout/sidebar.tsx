@@ -18,7 +18,6 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import { useRole } from "@/lib/role-context";
-import { mockStudent, mockTeacher } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
@@ -50,11 +49,20 @@ export function Sidebar() {
 
   const currentName =
     currentUser?.name ||
-    (effectiveRole === "student" ? mockStudent.name : mockTeacher.name);
-  const currentInitials =
-    effectiveRole === "student" ? mockStudent.initials : mockTeacher.initials;
+    (effectiveRole === "student" ? "Estudiante" : "Docente");
+  const currentInitials = currentUser?.name
+    ? currentUser.name
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase()
+    : effectiveRole === "student"
+      ? "ES"
+      : "DO";
   const currentDetail =
-    effectiveRole === "student" ? mockStudent.grade : mockTeacher.roleTitle;
+    effectiveRole === "student" ? "5.° Secundaria" : "Docente";
   const currentCode =
     currentUser?.code || (effectiveRole === "student" ? "EST-501" : "DOC-101");
 
