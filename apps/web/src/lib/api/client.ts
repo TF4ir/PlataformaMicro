@@ -4,6 +4,25 @@
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/**
+ * Returns false when running in an HTTPS production browser and API_BASE_URL
+ * points to insecure localhost/127.0.0.1, which browsers automatically block
+ * due to Mixed Content security policy.
+ */
+export function isBackendConfigured(): boolean {
+  if (typeof window !== "undefined") {
+    if (
+      window.location.protocol === "https:" &&
+      (!API_BASE_URL ||
+        API_BASE_URL.startsWith("http://localhost") ||
+        API_BASE_URL.startsWith("http://127.0.0.1"))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function getAuthToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
   try {
