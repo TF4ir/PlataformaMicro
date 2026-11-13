@@ -104,7 +104,7 @@ class HalfLifeRegressionModel(TemporalRetentionModel):
         max_log2 = math.log2(365.0 * 86400.0)
         log2_h = max(min_log2, min(max_log2, log2_h))
 
-        return 2.0**log2_h
+        return float(2.0**log2_h)
 
     def predict_retention(
         self,
@@ -135,7 +135,7 @@ class HalfLifeRegressionModel(TemporalRetentionModel):
             # Virtually zero retention (< 1e-6)
             return 0.001
         prob = 2.0**power
-        return min(0.999, max(0.001, prob))
+        return float(min(0.999, max(0.001, prob)))
 
     def predict_forgetting_time(
         self,

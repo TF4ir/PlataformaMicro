@@ -333,7 +333,7 @@ export default function QuizActivePage() {
             {activity?.title || "Cuestionario de aprendizaje"}
           </h2>
           <p className="text-[11px] text-slate-500 font-medium">
-            {activity?.course_name || "Ciencias"}
+            {activity?.course_name || "Curso no especificado"}
           </p>
         </div>
 

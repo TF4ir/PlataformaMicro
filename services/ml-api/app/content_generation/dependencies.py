@@ -73,7 +73,9 @@ async def get_database_pool() -> asyncpg.Pool | None:
     """Dependency providing the shared asyncpg connection pool if in postgres mode."""
     if settings.REPOSITORY_BACKEND == "memory":
         return None
-    return await get_db_pool(dsn=settings.DATABASE_URL)
+    from app.core.secrets import get_database_dsn
+
+    return await get_db_pool(dsn=get_database_dsn())
 
 
 async def get_job_repository(

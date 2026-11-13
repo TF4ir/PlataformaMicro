@@ -29,6 +29,30 @@ import {
   studentLearningApi,
   StudentProgressDetailResponse,
 } from "@/lib/api/learning";
+import {
+  MASTERY_THRESHOLDS,
+  UNAVAILABLE_TEXT,
+  formatMetricWithMeta,
+} from "@/lib/data-provenance";
+
+function kcStatusBadge(status: string): {
+  label: string;
+  variant: "success" | "warning" | "secondary";
+} {
+  switch (status) {
+    case "consolidated":
+    case "Consolidado":
+      return { label: "Consolidado", variant: "success" };
+    case "in_progress":
+    case "En proceso":
+      return { label: "En proceso", variant: "secondary" };
+    case "requiring_reinforcement":
+    case "Refuerzo sugerido":
+      return { label: "Refuerzo sugerido", variant: "warning" };
+    default:
+      return { label: "Sin evidencia suficiente", variant: "secondary" };
+  }
+}
 
 export default function StudentProgressPage() {
   const [progressData, setProgressData] = useState<StudentProgressDetailResponse | null>(null);
@@ -82,6 +106,48 @@ export default function StudentProgressPage() {
   const kcBreakdown = progressData?.kc_breakdown || [];
   const activityHistory = progressData?.activity_history || [];
 
+  const metricMeta = analytics?.metric_meta;
+  const completedActivitiesText = analytics
+    ? formatMetricWithMeta(
+        metricMeta?.completed_activities_count,
+        analytics.completed_activities_count
+      )
+    : UNAVAILABLE_TEXT;
+  const accuracyText = analytics
+    ? formatMetricWithMeta(
+        metricMeta?.observed_accuracy_percentage,
+        analytics.observed_accuracy_percentage,
+        { unit: "%", decimals: 1 }
+      )
+    : UNAVAILABLE_TEXT;
+  const accuracyIsObserved =
+    metricMeta?.observed_accuracy_percentage.status === "observed" &&
+    typeof analytics?.observed_accuracy_percentage === "number";
+  const consolidatedText = analytics
+    ? formatMetricWithMeta(
+        metricMeta?.consolidated_concepts_count,
+        analytics.consolidated_concepts_count
+      )
+    : UNAVAILABLE_TEXT;
+  const totalConceptsText = analytics
+    ? formatMetricWithMeta(
+        metricMeta?.total_concepts_count,
+        analytics.total_concepts_count
+      )
+    : UNAVAILABLE_TEXT;
+  const conceptsAreObserved =
+    metricMeta?.consolidated_concepts_count.status === "observed" &&
+    metricMeta?.total_concepts_count.status === "observed";
+  const weeklyMinutesText = analytics
+    ? formatMetricWithMeta(
+        metricMeta?.weekly_learning_minutes,
+        analytics.weekly_learning_minutes,
+        { unit: "min" }
+      )
+    : UNAVAILABLE_TEXT;
+  // A failed request must not be rendered as an empty-but-successful dataset.
+  const dataUnavailable = Boolean(error) && !progressData;
+
   return (
     <div className="space-y-8 pb-12">
       {/* Header */}
@@ -91,7 +157,8 @@ export default function StudentProgressPage() {
             Mi progreso y retención
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Telemetría objetiva: observa tu precisión real y la dinámica estimada de retención a largo plazo.
+            Telemetría objetiva: precisión observada de tus respuestas y estado de
+            tus componentes de conocimiento.
           </p>
         </div>
         <Link href="/recommendations">
@@ -117,7 +184,7 @@ export default function StudentProgressPage() {
             Actividades completadas
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {analytics?.completed_activities_count ?? 0}
+            {completedActivitiesText}
           </p>
           <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
             <CheckCircle className="w-3.5 h-3.5" />
@@ -131,10 +198,12 @@ export default function StudentProgressPage() {
             Precisión observada
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {analytics?.observed_accuracy_percentage ?? 0}%
+            {accuracyText}
           </p>
           <p className="text-xs font-medium text-slate-400">
-            En {analytics?.total_answers ?? 0} respuestas analizadas
+            {accuracyIsObserved
+              ? `En ${analytics?.total_answers ?? 0} respuestas analizadas`
+              : "Aún no hay respuestas observadas"}
           </p>
         </Card>
 
@@ -144,13 +213,21 @@ export default function StudentProgressPage() {
             Conceptos consolidados
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {analytics?.consolidated_concepts_count ?? 0}
-            <span className="text-lg font-normal text-slate-400">
-              /{analytics?.total_concepts_count ?? 0}
-            </span>
+            {conceptsAreObserved ? (
+              <>
+                {consolidatedText}
+                <span className="text-lg font-normal text-slate-400">
+                  /{totalConceptsText}
+                </span>
+              </>
+            ) : (
+              <span className="text-lg font-semibold text-slate-600">
+                {consolidatedText}
+              </span>
+            )}
           </p>
           <p className="text-xs font-medium text-teal-700">
-            Retención &gt; 80% estimada
+            Umbral configurado: ≥ {MASTERY_THRESHOLDS.consolidated}% de precisión
           </p>
         </Card>
 
@@ -160,8 +237,7 @@ export default function StudentProgressPage() {
             Tiempo de microestudio
           </p>
           <p className="text-3xl font-extrabold text-slate-900">
-            {analytics?.weekly_learning_minutes ?? 0}
-            <span className="text-lg font-normal text-slate-400"> min</span>
+            {weeklyMinutesText}
           </p>
           <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
             <Clock className="w-3.5 h-3.5 text-teal-600" />
@@ -184,7 +260,9 @@ export default function StudentProgressPage() {
         {evolution.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400">
             <TrendingUp className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            No hay suficientes evaluaciones completadas para graficar la evolución. Resuelve tus cuestionarios pendientes para observar tu progreso.
+            {dataUnavailable
+              ? "No se pudo consultar la evolución: la solicitud falló. No se asume un historial vacío."
+              : "No hay suficientes evaluaciones completadas para graficar la evolución. Resuelve tus cuestionarios pendientes para observar tu progreso."}
           </div>
         ) : (
           <div className="h-64 w-full">
@@ -224,10 +302,18 @@ export default function StudentProgressPage() {
             Estado de componentes de conocimiento (KC)
           </h2>
           <p className="text-xs text-slate-500">
-            Diferenciación entre respuestas observadas y probabilidad de retención proyectada (DAS3H / PFA)
+            Respuestas observadas y, solo cuando existe un modelo validado, la
+            estimación de retención correspondiente.
           </p>
         </div>
 
+        {kcBreakdown.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400">
+            {dataUnavailable
+              ? "No se pudo consultar el estado de tus componentes: la solicitud falló."
+              : "No se han registrado componentes de conocimiento en este periodo."}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
@@ -236,19 +322,12 @@ export default function StudentProgressPage() {
                 <th className="py-3 px-4 font-semibold">UNIDAD</th>
                 <th className="py-3 px-4 font-semibold">RESPUESTAS (N)</th>
                 <th className="py-3 px-4 font-semibold">PRECISIÓN OBSERVADA</th>
-                <th className="py-3 px-4 font-semibold">ESTIMACIÓN DE RETENCIÓN</th>
+                <th className="py-3 px-4 font-semibold">RETENCIÓN ESTIMADA</th>
                 <th className="py-3 px-4 text-right font-semibold">ESTADO</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {kcBreakdown.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No se han registrado componentes de conocimiento en este periodo.
-                  </td>
-                </tr>
-              ) : (
-                kcBreakdown.map((kc) => (
+              {kcBreakdown.map((kc) => (
                   <tr key={kc.kc_id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-4 font-semibold text-slate-900">
                       {kc.kc_name}
@@ -260,12 +339,20 @@ export default function StudentProgressPage() {
                       {kc.total_answers}
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-800">{kc.observed_accuracy}%</span>
-                        <div className="w-16">
-                          <Progress value={kc.observed_accuracy} className="h-1.5" />
+                      {kc.observed_accuracy !== null ? (
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-800">
+                            {kc.observed_accuracy}%
+                          </span>
+                          <div className="w-16">
+                            <Progress value={kc.observed_accuracy} className="h-1.5" />
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-500">
+                          Sin evidencia suficiente
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4">
                       {kc.is_cold_start ? (
@@ -280,24 +367,18 @@ export default function StudentProgressPage() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <Badge
-                        variant={
-                          kc.status === "Consolidado"
-                            ? "success"
-                            : kc.status === "Refuerzo sugerido"
-                            ? "warning"
-                            : "secondary"
-                        }
+                        variant={kcStatusBadge(kc.status).variant}
                         className="text-[10px]"
                       >
-                        {kc.status}
+                        {kcStatusBadge(kc.status).label}
                       </Badge>
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>
+        )}
       </Card>
 
       {/* Completed Activities History */}
@@ -312,7 +393,11 @@ export default function StudentProgressPage() {
         </div>
 
         {activityHistory.length === 0 ? (
-          <p className="text-xs text-slate-400 py-4">Aún no has completado cuestionarios en tus cursos.</p>
+          <p className="text-xs text-slate-400 py-4">
+            {dataUnavailable
+              ? "No se pudo consultar tu historial: la solicitud falló."
+              : "Aún no has completado cuestionarios en tus cursos."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">

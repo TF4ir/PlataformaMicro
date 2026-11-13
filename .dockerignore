@@ -1,0 +1,30 @@
+# Version control and CI
+.git
+.github
+
+# Monorepo workspaces not needed for ml-api container
+apps/
+node_modules
+Capturas
+docs/
+archive/
+packages/
+supabase/
+scripts/
+.agents/
+
+# Python virtualenvs and caches (recursive across all subdirectories)
+**/.venv
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/.coverage
+**/htmlcov
+
+# Local secrets and environment variables
+.env
+.env.*
+!.env.example

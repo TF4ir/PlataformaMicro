@@ -3,6 +3,7 @@
 from app.content_generation.infrastructure.database import (
     close_db_pool,
     get_db_pool,
+    invalidate_db_pool_and_cached_dsn,
     normalize_database_url,
 )
 from app.content_generation.infrastructure.postgres_draft_repository import (
@@ -25,5 +26,6 @@ __all__ = [
     "PostgresUnitOfWork",
     "close_db_pool",
     "get_db_pool",
+    "invalidate_db_pool_and_cached_dsn",
     "normalize_database_url",
 ]

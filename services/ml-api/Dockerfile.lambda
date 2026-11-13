@@ -1,0 +1,70 @@
+# ==============================================================================
+# AWS Lambda container image for the FastAPI ML-API.
+#
+# Build context MUST be the repository root so that `ml/` artifacts are copied:
+#   docker build -f services/ml-api/Dockerfile.lambda -t nexo-ml-api-lambda:local .
+#
+# This image is intentionally separate from `services/ml-api/Dockerfile`, which
+# remains the conventional container used by blitz.cloud / Docker Compose.
+#
+# Runtime: AWS Lambda Web Adapter 1.1.0 + Uvicorn on port 8000.
+# ==============================================================================
+
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/ml-api/pyproject.toml services/ml-api/poetry.lock* services/ml-api/README.md ./
+RUN pip install --upgrade pip && \
+    pip install poetry==2.5.1 && \
+    poetry config virtualenvs.in-project true && \
+    poetry install --only main --no-root --no-interaction --no-ansi
+
+# ------------------------------------------------------------------------------
+# Runtime image. A non-AWS base image is required because the Lambda Web
+# Adapter ships its own Runtime Interface Client; AWS managed base images would
+# need a custom ENTRYPOINT. The adapter starts Uvicorn and translates Lambda
+# Function URL invocations into HTTP requests.
+# ------------------------------------------------------------------------------
+FROM python:3.11-slim
+
+# AWS Lambda Web Adapter extension (multi-arch image; works on x86_64/arm64).
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PATH="/app/.venv/bin:$PATH" \
+    PORT=8000 \
+    AWS_LWA_PORT=8000 \
+    AWS_LWA_READINESS_CHECK_PATH=/api/v1/health \
+    AWS_LWA_INVOKE_MODE=buffered \
+    MODEL_ARTIFACTS_DIR=/app/ml/artifacts \
+    TMPDIR=/tmp
+
+# The image runs as the default container user so `sam local invoke/start-api`
+# can inject the Lambda Runtime Interface Emulator under /var/rapid. Lambda
+# provides VM-level isolation for each execution environment.
+RUN mkdir -p /app /tmp
+
+COPY --from=builder /app/.venv /app/.venv
+COPY services/ml-api/app /app/app
+COPY ml /app/ml
+
+RUN chmod -R a+rX /app
+
+# Lambda Web Adapter listens on AWS_LWA_PORT (falls back to PORT) and proxies
+# to this process. `exec` replaces the shell so uvicorn receives SIGTERM from
+# the Lambda extension shutdown lifecycle.
+CMD exec uvicorn --port=${PORT} --host 0.0.0.0 app.main:app --workers 1 --proxy-headers --forwarded-allow-ips '*'

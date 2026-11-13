@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY services/ml-api/pyproject.toml services/ml-api/README.md ./
+COPY services/ml-api/pyproject.toml services/ml-api/poetry.lock* services/ml-api/README.md ./
 RUN pip install --upgrade pip && \
     pip install poetry && \
     poetry config virtualenvs.in-project true && \

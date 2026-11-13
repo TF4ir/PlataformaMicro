@@ -10,6 +10,7 @@ Implements Milestone M4.2 + MVP hardening:
 - Prevention of identity spoofing or header overriding over verified JWTs.
 """
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Callable
@@ -22,6 +23,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException, status
 from jwt import PyJWKClient
 
+from app.content_generation.infrastructure.database import get_db_pool
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -113,6 +115,145 @@ class AuthenticatedUser:
     authorized_course_ids: set[str] = field(default_factory=set)
 
 
+def _auth_http_error(
+    status_code: int,
+    *,
+    title: str,
+    detail: str,
+    code: str,
+    retry_after: int | None = None,
+) -> HTTPException:
+    """Build an RFC 7807 style authentication/authorization error."""
+    headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "type": f"https://api.plataformamicro.edu.pe/errors/{code.lower().replace('_', '-')}",
+            "title": title,
+            "status": status_code,
+            "detail": detail,
+            "code": code,
+        },
+        headers=headers,
+    )
+
+
+async def _fetch_identity_once(
+    user_uuid: uuid.UUID,
+) -> tuple[str, str, set[str]] | None:
+    """Read role, tenant and course scope from `public.profiles` exactly once.
+
+    Returns ``None`` when the authenticated subject has no provisioned profile.
+    Any database/network exception is propagated so the caller can retry or
+    fail closed with 503.
+    """
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        profile_row = await conn.fetchrow(
+            "SELECT tenant_id, role FROM public.profiles WHERE id = $1",
+            user_uuid,
+        )
+        if profile_row is None:
+            return None
+
+        tenant_id = str(profile_row["tenant_id"])
+        role = str(profile_row["role"])
+        authorized_course_ids: set[str] = set()
+
+        if role == "teacher":
+            section_rows = await conn.fetch(
+                "SELECT DISTINCT course_id::text FROM public.sections WHERE teacher_id = $1",
+                user_uuid,
+            )
+            authorized_course_ids = {row[0] for row in section_rows}
+        elif role == "student":
+            enrollment_rows = await conn.fetch(
+                """
+                SELECT DISTINCT s.course_id::text
+                FROM public.enrollments e
+                JOIN public.sections s ON s.id = e.section_id
+                WHERE e.student_id = $1
+                """,
+                user_uuid,
+            )
+            authorized_course_ids = {row[0] for row in enrollment_rows}
+
+        return tenant_id, role, authorized_course_ids
+
+
+async def _resolve_identity_from_db(user_id: str) -> tuple[str, str, set[str]]:
+    """Resolve the authoritative authorization context from PostgreSQL.
+
+    Security contract:
+    - `public.profiles` is the sole source of `role` and `tenant_id`.
+    - JWT claims are never consulted as a fallback.
+    - A transient/stale connection (common when Lambda thaws a frozen
+      execution environment) is retried once. If the database still cannot be
+      verified, the request fails with 503 and is never authorized.
+    """
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except (TypeError, ValueError) as exc:
+        raise _auth_http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            title="Token Inválido",
+            detail="El token no contiene un identificador de usuario válido (sub).",
+            code="INVALID_TOKEN_SUBJECT",
+        ) from exc
+
+    attempts = max(1, settings.DB_STALE_RETRY_ATTEMPTS + 1)
+    last_error: Exception | None = None
+
+    for attempt in range(attempts):
+        try:
+            identity = await _fetch_identity_once(user_uuid)
+        except (TimeoutError, asyncpg.PostgresError, OSError, RuntimeError) as exc:
+            last_error = exc
+            logger.warning(
+                "Authoritative identity lookup failed (attempt %d/%d): %s",
+                attempt + 1,
+                attempts,
+                type(exc).__name__,
+            )
+            if attempt + 1 < attempts:
+                # Yield to the event loop; asyncpg discards broken connections
+                # from the pool so the next acquire gets a fresh one.
+                await asyncio.sleep(0)
+                continue
+        else:
+            if identity is None:
+                raise _auth_http_error(
+                    status.HTTP_403_FORBIDDEN,
+                    title="Identidad No Habilitada",
+                    detail="El usuario autenticado no tiene un perfil institucional habilitado.",
+                    code="IDENTITY_NOT_PROVISIONED",
+                )
+
+            tenant_id, role, authorized_course_ids = identity
+            if not tenant_id or not role:
+                raise _auth_http_error(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    title="Identidad No Verificable",
+                    detail="No se pudo verificar la institución o el rol del usuario en la base de datos.",
+                    code="AUTH_BACKEND_UNAVAILABLE",
+                    retry_after=5,
+                )
+            return tenant_id, role, authorized_course_ids
+
+    logger.error(
+        "Authoritative identity lookup unavailable after %d attempt(s): %s",
+        attempts,
+        type(last_error).__name__ if last_error else "unknown",
+    )
+    raise _auth_http_error(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        title="Servicio de Identidad No Disponible",
+        detail="No se pudo verificar la identidad del usuario. Intenta nuevamente en unos segundos.",
+        code="AUTH_BACKEND_UNAVAILABLE",
+        retry_after=5,
+    ) from last_error
+
+
 async def get_current_user(
     authorization: str | None = Header(None, alias="Authorization"),
     x_user_id: str | None = Header(None, alias="X-User-Id"),
@@ -179,83 +320,18 @@ async def get_current_user(
         email = payload.get("email")
 
         # ----------------------------------------------------------------------
-        # Authoritative Resolution of Tenant, Role, and Courses from Database
+        # Authoritative Resolution of Tenant, Role, and Courses from Database.
+        #
+        # `public.profiles` is the ONLY source of role and tenant. JWT claims
+        # (`user_metadata`, `app_metadata`, `tenant_id`, `role`, ...) are NEVER
+        # trusted for authorization: a user can edit `user_metadata` on the
+        # client side with Supabase's public anon key.
+        #
+        # If the database cannot be reached, the request MUST fail closed with
+        # 503 instead of falling back to claims or executing a protected
+        # endpoint without a verified identity.
         # ----------------------------------------------------------------------
-        tenant_id: str | None = None
-        role: str | None = None
-        authorized_course_ids: set[str] = set()
-
-        from app.content_generation.infrastructure.database import _POOL
-
-        if _POOL is not None and not getattr(_POOL, "_closed", True):
-            try:
-                user_uuid = uuid.UUID(user_id)
-                async with _POOL.acquire() as conn:
-                    profile_row = await conn.fetchrow(
-                        "SELECT tenant_id, role, full_name FROM profiles WHERE id = $1",
-                        user_uuid,
-                    )
-                    if profile_row is not None:
-                        tenant_id = str(profile_row["tenant_id"])
-                        role = str(profile_row["role"])
-
-                        if role == "teacher":
-                            section_rows = await conn.fetch(
-                                "SELECT DISTINCT course_id::text FROM sections WHERE teacher_id = $1",
-                                user_uuid,
-                            )
-                            authorized_course_ids = {r[0] for r in section_rows}
-                        elif role == "student":
-                            enrollment_rows = await conn.fetch(
-                                """
-                                SELECT DISTINCT s.course_id::text
-                                FROM enrollments e
-                                JOIN sections s ON s.id = e.section_id
-                                WHERE e.student_id = $1
-                                """,
-                                user_uuid,
-                            )
-                            authorized_course_ids = {r[0] for r in enrollment_rows}
-            except (asyncpg.PostgresError, OSError, ValueError, KeyError) as e:
-                logger.warning("Could not query authoritative profile from database pool: %s", e)
-
-        # Fallback to token claims if profile was not found or pool is uninitialized
-        if not tenant_id:
-            app_metadata = payload.get("app_metadata", {})
-            user_metadata = payload.get("user_metadata", {})
-            tenant_id = (
-                payload.get("tenant_id")
-                or app_metadata.get("tenant_id")
-                or user_metadata.get("tenant_id")
-            )
-            if tenant_id:
-                tenant_id = str(tenant_id)
-
-        if not role:
-            app_metadata = payload.get("app_metadata", {})
-            user_metadata = payload.get("user_metadata", {})
-            # Look up role in user_metadata first, then app_metadata, default to student
-            claim_role = user_metadata.get("role") or app_metadata.get("role")
-            if not claim_role and payload.get("role") != "authenticated":
-                claim_role = payload.get("role")
-            role = str(claim_role or "student")
-
-        if not authorized_course_ids:
-            claim_courses = payload.get("authorized_course_ids", [])
-            if isinstance(claim_courses, list):
-                authorized_course_ids = {str(c) for c in claim_courses}
-
-        if not tenant_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={
-                    "type": "https://api.plataformamicro.edu.pe/errors/unauthorized",
-                    "title": "Reclamos Incompletos",
-                    "status": 401,
-                    "detail": "No se pudo resolver la institución (tenant_id) del usuario.",
-                    "code": "INCOMPLETE_AUTH_CLAIMS",
-                },
-            )
+        tenant_id, role, authorized_course_ids = await _resolve_identity_from_db(user_id)
 
         return AuthenticatedUser(
             user_id=user_id,

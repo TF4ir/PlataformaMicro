@@ -24,6 +24,7 @@ import {
   MicrocontentDetailResponse,
   MicrocontentSectionItem,
 } from "@/lib/api/microcontents";
+import { selectContentRenderer } from "@/lib/data-provenance";
 
 interface LearnPageProps {
   params: {
@@ -91,9 +92,12 @@ export default function MicrolearningLessonPage({ params }: LearnPageProps) {
       id: 1,
       navTitle: "Conceptos clave",
       heading: microcontent?.title || "Fundamentos",
-      tag: "Microlección",
+      tag: "MICROLECCIÓN",
       lead: (microcontent?.content_body?.summary as string) || "Revisa las ideas esenciales de este componente de conocimiento.",
-      durationMinutes: 3,
+      durationMinutes:
+        microcontent && microcontent.estimated_duration_seconds > 0
+          ? Math.max(1, Math.ceil(microcontent.estimated_duration_seconds / 60))
+          : 0,
     },
   ];
 
@@ -165,9 +169,11 @@ export default function MicrolearningLessonPage({ params }: LearnPageProps) {
     );
   }
 
-  const isPhotosynthesis =
-    microcontent.knowledge_component_name.toLowerCase().includes("fotosíntesis") ||
-    microcontent.title.toLowerCase().includes("fotosíntesis");
+  // Specialised diagrams are selected from explicit metadata, never from the title.
+  const contentRenderer = selectContentRenderer({
+    content_type: microcontent.content_type,
+    content_body: microcontent.content_body,
+  });
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white">
@@ -258,7 +264,9 @@ export default function MicrolearningLessonPage({ params }: LearnPageProps) {
 
           <div className="text-xs font-medium text-slate-500 flex-shrink-0 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
-            {currentSection.durationMinutes || 2} min
+            {currentSection.durationMinutes > 0
+              ? `${currentSection.durationMinutes} min`
+              : "Duración no reportada"}
           </div>
         </header>
 
@@ -277,8 +285,8 @@ export default function MicrolearningLessonPage({ params }: LearnPageProps) {
             </p>
           </div>
 
-          {/* Interactive Biochemical Process Diagram if Photosynthesis */}
-          {isPhotosynthesis && <PhotosynthesisDiagram />}
+          {/* Specialised diagram selected by content_type / diagram_key */}
+          {contentRenderer === "photosynthesis" && <PhotosynthesisDiagram />}
 
           {/* Formula Callout */}
           {currentSection.formula && (

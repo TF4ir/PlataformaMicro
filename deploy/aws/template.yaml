@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  PlataformaMicro ML-API on AWS Lambda.
+  Container image (FastAPI + Uvicorn) executed through AWS Lambda Web Adapter
+  1.1.0 and exposed by a Lambda Function URL with AuthType NONE. FastAPI enforces
+  JWT ES256 authentication on all business routes. CORS is handled at the
+  Function URL layer to prevent duplicate headers. Database DSN is retrieved
+  securely at startup from AWS Secrets Manager with zero credential logging.
+
+Parameters:
+  ImageUri:
+    Type: String
+    MinLength: 1
+    Description: >
+      Full ECR image URI including tag, e.g.
+      716174523077.dkr.ecr.us-east-2.amazonaws.com/nexo-mvp-ml-api:mvp-abc123.
+      Build it with deploy/aws/build_and_push.sh.
+
+  DatabaseSecretArn:
+    Type: String
+    MinLength: 20
+    Description: >
+      ARN of the AWS Secrets Manager secret holding the Supabase Transaction
+      Pooler DSN (port 6543, sslmode=require).
+
+  SupabaseUrl:
+    Type: String
+    Default: https://oqjahhbqcethwgpufgnm.supabase.co
+    Description: Supabase project URL used to derive the JWKS endpoint.
+
+  CorsOrigins:
+    Type: String
+    Default: "https://plataformamicro.fabriziovalerio-c.workers.dev"
+    Description: >
+      Comma-separated verified frontend origins allowed by the Lambda Function
+      URL CORS layer.
+
+  MemorySize:
+    Type: Number
+    Default: 1024
+    MinValue: 512
+    MaxValue: 4096
+
+  Timeout:
+    Type: Number
+    Default: 30
+    MinValue: 3
+    MaxValue: 60
+
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+
+Globals:
+  Function:
+    Architectures:
+      - x86_64
+    Tags:
+      Project: PlataformaMicro
+      Component: ml-api
+
+Resources:
+  MlApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: PlataformaMicro
+        - Key: Component
+          Value: ml-api
+
+  MlApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-role"
+      Description: Execution role for PlataformaMicro ML-API Lambda function
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SecretsManagerDatabaseSecretAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: SecretsManagerDatabaseSecretAccess
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseSecretArn
+      Tags:
+        - Key: Project
+          Value: PlataformaMicro
+        - Key: Component
+          Value: ml-api
+
+  MlApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      Dockerfile: services/ml-api/Dockerfile.lambda
+      DockerContext: ../..
+      DockerTag: mvp-local
+    Properties:
+      FunctionName: !Ref AWS::StackName
+      Role: !GetAtt MlApiFunctionRole.Arn
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref Timeout
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          DEBUG: "false"
+          REPOSITORY_BACKEND: postgres
+
+          # AWS Secrets Manager Integration (retrieved in-memory at cold start)
+          DATABASE_SECRET_ARN: !Ref DatabaseSecretArn
+
+          # Supabase Shared Pooler, Transaction Mode (port 6543)
+          DB_POOL_MODE: transaction
+          DB_POOL_MIN_SIZE: "1"
+          DB_POOL_MAX_SIZE: "1"
+          DB_STATEMENT_CACHE_SIZE: "0"
+          DB_SSL_MODE: require
+          DB_COMMAND_TIMEOUT: "30"
+          DB_CONNECT_TIMEOUT: "5"
+          # Short idle lifetime + capped queries help discard connections that
+          # Supabase closed while the Lambda execution environment was frozen.
+          DB_MAX_INACTIVE_CONNECTION_LIFETIME: "30"
+          DB_MAX_QUERIES: "1000"
+          DB_STALE_RETRY_ATTEMPTS: "1"
+
+          SUPABASE_URL: !Ref SupabaseUrl
+          SUPABASE_JWKS_URL: !Sub "${SupabaseUrl}/auth/v1/.well-known/jwks.json"
+
+          # CORS and Feature Flags
+          CORS_ORIGINS: !Ref CorsOrigins
+          ENABLE_CORS_MIDDLEWARE: "false"
+          CONTENT_GENERATION_WORKER_ENABLED: "false"
+          MODEL_ARTIFACTS_DIR: /app/ml/artifacts
+          TMPDIR: /tmp
+
+          # AWS Lambda Web Adapter settings
+          PORT: "8000"
+          AWS_LWA_PORT: "8000"
+          AWS_LWA_READINESS_CHECK_PATH: /api/v1/health
+          AWS_LWA_INVOKE_MODE: buffered
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins: !Split [",", !Ref CorsOrigins]
+          AllowCredentials: false
+          AllowMethods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - HEAD
+          AllowHeaders:
+            - authorization
+            - content-type
+            - x-idempotency-key
+            - x-request-id
+          MaxAge: 86400
+      Tags:
+        Project: PlataformaMicro
+        Component: ml-api
+
+Outputs:
+  FunctionName:
+    Description: Lambda function name.
+    Value: !Ref MlApiFunction
+  FunctionArn:
+    Description: Lambda function ARN.
+    Value: !GetAtt MlApiFunction.Arn
+  FunctionRoleArn:
+    Description: Lambda execution role ARN.
+    Value: !GetAtt MlApiFunctionRole.Arn
+  FunctionUrl:
+    Description: >
+      Public Lambda Function URL. Set it as NEXT_PUBLIC_API_URL in the
+      Cloudflare Worker only after the coordinated release validation.
+    Value: !GetAtt MlApiFunctionUrl.FunctionUrl
+  ImageUri:
+    Description: Image URI currently deployed.
+    Value: !Ref ImageUri
+  LogGroupName:
+    Description: CloudWatch Log Group for ML-API execution logs.
+    Value: !Ref MlApiLogGroup

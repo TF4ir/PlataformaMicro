@@ -517,7 +517,7 @@ function CreateActivityModal({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ej. Fotosíntesis: Fase Lumínica y Oscura"
+                placeholder="Ej. Concepto central de la actividad"
                 className="w-full text-xs h-10 px-3.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-600/30 text-slate-900"
                 required
               />

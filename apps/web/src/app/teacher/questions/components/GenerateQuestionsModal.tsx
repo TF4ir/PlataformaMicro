@@ -149,6 +149,14 @@ export function GenerateQuestionsModal({
           </button>
         </div>
 
+        <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs leading-relaxed">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold block text-amber-950">Generación asistida en transición a worker asíncrono</span>
+            La extracción de preguntas con IA se ejecutará en un worker asíncrono dedicado (Fase 2). Para evitar archivos huérfanos y errores 503 en Lambda, la carga de materiales didácticos está pausada en esta fase de despliegue.
+          </div>
+        </div>
+
         {errorMessage && (
           <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-medium">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -277,11 +285,12 @@ export function GenerateQuestionsModal({
             <Button
               type="submit"
               size="sm"
-              disabled={isUploading || !selectedFile}
-              className="bg-[#0A635F] hover:bg-[#0B2D34] text-white font-semibold rounded-xl text-xs gap-1.5 shadow-xs"
+              disabled={true}
+              title="Carga pausada durante la transición a worker asíncrono (Fase 2)"
+              className="bg-slate-300 text-slate-500 cursor-not-allowed font-semibold rounded-xl text-xs gap-1.5 shadow-xs"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              {isUploading ? "Cargando y procesando..." : "Comenzar generación"}
+              Comenzar generación
             </Button>
           </div>
         </form>

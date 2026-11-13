@@ -3,6 +3,11 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { UserRole } from "@/types/ui";
 import { useRouter, usePathname } from "next/navigation";
+import {
+  normalizeRole,
+  portalRoleFor,
+  safeRedirectForRole,
+} from "@/lib/auth/authorization";
 
 interface AuthUser {
   id: string;
@@ -19,36 +24,76 @@ interface RoleContextType {
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   toggleMobileMenu: () => void;
-  login: (
-    role: UserRole,
-    user?: Partial<AuthUser>,
-    redirectTo?: string
-  ) => void;
+  login: (user: AuthUser, redirectTo?: string) => void;
   logout: () => Promise<void>;
-  setRole: (role: UserRole) => void;
-  toggleRole: () => void;
 }
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
-// Helper to get cookie value on client
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
-  return match ? decodeURIComponent(match[2]) : null;
+const LEGACY_AUTH_COOKIES = [
+  "nexo_session",
+  "nexo_role",
+  "nexo_user_name",
+] as const;
+
+/**
+ * Removes cookies written by the previous client-side auth simulation.
+ * They are no longer read anywhere; deleting them prevents stale values from
+ * confusing users or future code.
+ */
+function clearLegacyAuthCookies() {
+  if (typeof document === "undefined") return;
+  for (const name of LEGACY_AUTH_COOKIES) {
+    document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+  }
 }
 
-// Helper to set cookie on client
-function setCookie(name: string, value: string, days: number = 7) {
-  if (typeof document === "undefined") return;
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+interface VerifiedProfile {
+  role: UserRole;
+  name: string;
+  email: string;
+  code?: string;
+  id: string;
 }
 
-// Helper to erase cookie on client
-function eraseCookie(name: string) {
-  if (typeof document === "undefined") return;
-  document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+/**
+ * Loads the signed-in user from Supabase Auth and the authoritative role from
+ * `public.profiles`. Returns `null` when there is no verified session.
+ */
+async function loadVerifiedProfile(): Promise<VerifiedProfile | null> {
+  const { createClient } = await import("@/lib/supabase/client");
+  const supabase = createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) return null;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role, full_name, student_code")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileError || !profile) return null;
+
+  const verifiedRole = normalizeRole(profile.role);
+  const portalRole = portalRoleFor(verifiedRole);
+  if (!verifiedRole || !portalRole) return null;
+
+  return {
+    id: user.id,
+    name:
+      profile.full_name ||
+      user.email?.split("@")[0] ||
+      "Usuario",
+    email: user.email || "",
+    role: portalRole,
+    code:
+      typeof profile.student_code === "string"
+        ? profile.student_code
+        : undefined,
+  };
 }
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
@@ -60,55 +105,35 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Initialize auth state from Supabase Auth & cookies
+  // Initialize auth state from the verified Supabase session only.
   useEffect(() => {
     let isMounted = true;
+    clearLegacyAuthCookies();
+
     async function syncSession() {
       try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const profile = await loadVerifiedProfile();
         if (!isMounted) return;
 
-        if (!error && session?.user) {
-          setIsAuthenticated(true);
-          const meta = session.user.user_metadata || {};
-          const userRole = (meta.role as UserRole) || (getCookie("nexo_role") as UserRole) || "student";
-          setRoleState(userRole);
-          setCurrentUser({
-            id: session.user.id,
-            name: meta.full_name || getCookie("nexo_user_name") || session.user.email?.split("@")[0] || "Usuario",
-            email: session.user.email || "",
-            role: userRole,
-            code: meta.student_code || (userRole === "teacher" ? "DOC-101" : "EST-501"),
-          });
-          setCookie("nexo_role", userRole, 7);
+        if (!profile) {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
           return;
         }
-      } catch (e) {
-        // Continue to cookie fallback
-      }
 
-      const savedRole = (getCookie("nexo_role") as UserRole) || null;
-      const sessionToken = getCookie("nexo_session");
-
-      if (sessionToken && savedRole) {
         setIsAuthenticated(true);
-        setRoleState(savedRole);
-        const savedName = getCookie("nexo_user_name");
+        setRoleState(profile.role);
         setCurrentUser({
-          id: savedRole === "teacher" ? "d0000000-0000-0000-0000-000000000001" : "e0000000-0000-0000-0000-000000000001",
-          name: savedName || (savedRole === "teacher" ? "Ana García" : "Lucía Mendoza"),
-          email: savedRole === "teacher" ? "ana.garcia@nexo.edu.pe" : "lucia.mendoza@nexo.edu.pe",
-          role: savedRole,
-          code: savedRole === "teacher" ? "DOC-101" : "EST-501",
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          role: profile.role,
+          code: profile.code,
         });
-      } else {
-        const isPublicPath =
-          pathname === "/login" || pathname === "/recovery" || pathname === "/";
-        if (!isPublicPath) {
-          setIsAuthenticated(false);
-        }
+      } catch {
+        if (!isMounted) return;
+        setIsAuthenticated(false);
+        setCurrentUser(null);
       }
     }
 
@@ -123,49 +148,13 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  const login = (
-    newRole: UserRole,
-    user?: Partial<AuthUser>,
-    redirectTo?: string
-  ) => {
+  const login = (user: AuthUser, redirectTo?: string) => {
     setIsAuthenticated(true);
-    setRoleState(newRole);
+    setRoleState(user.role);
+    setCurrentUser(user);
 
-    const fullUser: AuthUser = {
-      id: user?.id || (newRole === "teacher" ? "d0000000-0000-0000-0000-000000000001" : "e0000000-0000-0000-0000-000000000001"),
-      name:
-        user?.name || (newRole === "teacher" ? "Ana García" : "Lucía Mendoza"),
-      email:
-        user?.email ||
-        (newRole === "teacher"
-          ? "ana.garcia@nexo.edu.pe"
-          : "lucia.mendoza@nexo.edu.pe"),
-      role: newRole,
-      code: user?.code || (newRole === "teacher" ? "DOC-101" : "EST-501"),
-    };
-
-    setCurrentUser(fullUser);
-    setCookie("nexo_session", "session_active_" + Date.now(), 7);
-    setCookie("nexo_role", newRole, 7);
-    setCookie("nexo_user_name", fullUser.name, 7);
-
-    // Validate redirect target against role privileges
-    if (redirectTo && redirectTo.startsWith("/")) {
-      if (newRole === "student" && !redirectTo.startsWith("/teacher")) {
-        router.push(redirectTo);
-        return;
-      }
-      if (newRole === "teacher" && redirectTo.startsWith("/teacher")) {
-        router.push(redirectTo);
-        return;
-      }
-    }
-
-    if (newRole === "teacher") {
-      router.push("/teacher/dashboard");
-    } else {
-      router.push("/dashboard");
-    }
+    const verifiedRole = normalizeRole(user.role);
+    router.push(safeRedirectForRole(verifiedRole, redirectTo));
   };
 
   const logout = async () => {
@@ -173,32 +162,14 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       const { createClient } = await import("@/lib/supabase/client");
       const supabase = createClient();
       await supabase.auth.signOut();
-    } catch (e) {
-      // ignore
+    } catch {
+      // The local state is cleared even if the network sign-out fails.
     }
 
-    eraseCookie("nexo_session");
-    eraseCookie("nexo_role");
-    eraseCookie("nexo_user_name");
-
+    clearLegacyAuthCookies();
     setIsAuthenticated(false);
     setCurrentUser(null);
     router.push("/login");
-  };
-
-  const setRole = (newRole: UserRole) => {
-    setRoleState(newRole);
-    setCookie("nexo_role", newRole, 7);
-    if (newRole === "teacher") {
-      router.push("/teacher/dashboard");
-    } else {
-      router.push("/dashboard");
-    }
-  };
-
-  const toggleRole = () => {
-    const nextRole = role === "student" ? "teacher" : "student";
-    setRole(nextRole);
   };
 
   const toggleMobileMenu = () => {
@@ -216,8 +187,6 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         toggleMobileMenu,
         login,
         logout,
-        setRole,
-        toggleRole,
       }}
     >
       {children}

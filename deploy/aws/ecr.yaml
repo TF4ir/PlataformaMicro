@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Amazon ECR repository for the PlataformaMicro FastAPI ML-API Lambda image.
+  Deploy this stack first, then build/push the image, then deploy template.yaml.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: nexo-mvp
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,30}$"
+    Description: Lowercase project prefix used for the ECR repository name.
+
+Resources:
+  MlApiRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-ml-api"
+      ImageTagMutability: MUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep the last 10 release images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Project
+          Value: PlataformaMicro
+        - Key: Component
+          Value: ml-api
+
+Outputs:
+  RepositoryName:
+    Description: ECR repository name.
+    Value: !Ref MlApiRepository
+    Export:
+      Name: !Sub "${AWS::StackName}-RepositoryName"
+  RepositoryUri:
+    Description: ECR repository URI (without tag).
+    Value: !GetAtt MlApiRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-RepositoryUri"

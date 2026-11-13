@@ -22,6 +22,7 @@ from app.content_generation.infrastructure.database import (
     get_db_pool,
 )
 from app.core.config import settings
+from app.core.secrets import get_database_dsn
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan event handler for database pooling, model loading, and cleanup."""
     # Initialize DB pool if configured
     try:
-        if settings.REPOSITORY_BACKEND != "memory" and settings.DATABASE_URL:
-            await get_db_pool(dsn=settings.DATABASE_URL)
-            logger.info("Database pool initialized in application lifespan.")
+        if settings.REPOSITORY_BACKEND != "memory":
+            dsn = get_database_dsn()
+            if dsn:
+                await get_db_pool(dsn=dsn)
+                logger.info("Database pool initialized in application lifespan.")
     except (OSError, asyncpg.PostgresError) as e:
         logger.warning("Could not connect to database pool at startup: %s", e)
+    except RuntimeError as e:
+        logger.error("Controlled database initialization failure: %s", e)
+        raise
 
     yield
 
@@ -56,21 +62,35 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-cors_origins_env = os.getenv(
-    "CORS_ORIGINS",
-    settings.CORS_ORIGINS,
+# Avoid duplicate Access-Control-Allow-Origin headers in AWS Lambda:
+# When deployed to Lambda, Function URL manages CORS headers at the AWS edge.
+# FastAPI CORSMiddleware is enabled only for local development/container runs.
+is_lambda_runtime = bool(
+    os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    or os.getenv("AWS_EXECUTION_ENV")
+    or not settings.ENABLE_CORS_MIDDLEWARE
 )
-allowed_origins = [
-    origin.strip() for origin in cors_origins_env.split(",") if origin.strip()
-]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if not is_lambda_runtime and settings.ENABLE_CORS_MIDDLEWARE:
+    cors_origins_env = os.getenv(
+        "CORS_ORIGINS",
+        settings.CORS_ORIGINS,
+    )
+    allowed_origins = [
+        origin.strip() for origin in cors_origins_env.split(",") if origin.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logger.info("FastAPI CORSMiddleware enabled for origins: %s", allowed_origins)
+else:
+    logger.info(
+        "FastAPI CORSMiddleware disabled: CORS is managed upstream by AWS Function URL."
+    )
 
 
 @app.exception_handler(ContentGenerationError)
@@ -100,7 +120,11 @@ async def http_exception_handler(
 ) -> JSONResponse:
     """Format standard HTTP exceptions into RFC 7807 Problem Details."""
     if isinstance(exc.detail, dict):
-        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.detail,
+            headers=exc.headers,
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -110,6 +134,7 @@ async def http_exception_handler(
             "detail": str(exc.detail),
             "code": "HTTP_ERROR",
         },
+        headers=exc.headers,
     )
 
 

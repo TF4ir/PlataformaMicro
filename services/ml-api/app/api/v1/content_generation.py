@@ -24,6 +24,7 @@ Enforces:
 
 import hashlib
 import logging
+import os
 import re
 import unicodedata
 import uuid
@@ -81,6 +82,7 @@ from app.content_generation.services.publication_service import (
     DraftPublicationService,
 )
 from app.core.auth import AuthenticatedUser, get_current_user
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -465,6 +467,22 @@ async def create_generation_job(
     job_repo: Annotated[JobRepositoryProtocol, Depends(get_job_repository)],
 ) -> GenerationJobResponse:
     """Enqueues a new content generation job in PostgreSQL after validating tenant and storage security."""
+    if not settings.CONTENT_GENERATION_WORKER_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "type": "https://api.plataformamicro.edu.pe/errors/content-generation-unavailable",
+                "title": "CONTENT_GENERATION_UNAVAILABLE",
+                "status": 503,
+                "detail": (
+                    "El procesamiento asíncrono de materiales curriculares no está disponible en este "
+                    "entorno de ejecución (AWS Lambda sin worker activo en segundo plano). Los trabajos "
+                    "no se encolan para evitar bloqueos permanentes."
+                ),
+                "code": "CONTENT_GENERATION_UNAVAILABLE",
+            },
+        )
+
     if user.role not in ("teacher", "admin", "super_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -523,10 +541,16 @@ async def create_generation_job(
             },
         ) from e
 
+    effective_course_id = request.course_id
+    if not effective_course_id:
+        cleaned_path_segs = request.storage_path.strip().replace("\\", "/").strip("/").split("/")
+        if len(cleaned_path_segs) >= 3 and cleaned_path_segs[1] != "general":
+            effective_course_id = cleaned_path_segs[1]
+
     if (
         user.role == "teacher"
-        and request.course_id
-        and request.course_id not in user.authorized_course_ids
+        and effective_course_id
+        and effective_course_id not in user.authorized_course_ids
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1582,12 +1606,22 @@ async def list_canonical_questions(
     summary="Cargar material curricular docente en almacenamiento privado",
 )
 async def upload_material(
-    file: Annotated[UploadFile, File(...)],
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     storage_client: Annotated[StorageClientProtocol, Depends(get_storage_client)],
+    file: Annotated[UploadFile | None, File()] = None,
     course_id: Annotated[str | None, Form()] = None,
+    storage_path: Annotated[str | None, Form()] = None,
+    original_filename: Annotated[str | None, Form()] = None,
+    mime_type: Annotated[str | None, Form()] = None,
+    file_size_bytes: Annotated[int | None, Form()] = None,
+    file_checksum: Annotated[str | None, Form()] = None,
+    storage_bucket: Annotated[str, Form()] = "teacher-materials",
 ) -> UploadMaterialResponse:
-    """Validates and uploads a curriculum document (PDF/PPTX) into private storage."""
+    """Validates and uploads a curriculum document (PDF/PPTX) into private storage,
+
+    or accepts an already uploaded Supabase Storage reference (storage_path + metadata)
+    to avoid large binary payloads traversing AWS Lambda.
+    """
     if user.role not in ("teacher", "admin", "super_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1612,66 +1646,221 @@ async def upload_material(
             },
         )
 
-    content = await file.read()
-    file_size = len(content)
+    # Path A: Direct binary file upload through endpoint
+    if file is not None:
+        content = await file.read()
+        file_size = len(content)
 
-    if file_size == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "type": "https://api.plataformamicro.edu.pe/errors/invalid-file",
-                "title": "INVALID_FILE_SIGNATURE",
-                "status": 400,
-                "detail": "El archivo recibido está vacío (0 bytes).",
-                "code": "INVALID_FILE_SIGNATURE",
-            },
+        if file_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/invalid-file",
+                    "title": "INVALID_FILE_SIGNATURE",
+                    "status": 400,
+                    "detail": "El archivo recibido está vacío (0 bytes).",
+                    "code": "INVALID_FILE_SIGNATURE",
+                },
+            )
+
+        # AWS Lambda Function URL synchronous payload limit enforcement (6 MB)
+        is_lambda = bool(
+            os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+            or os.getenv("AWS_EXECUTION_ENV")
+            or os.getenv("LAMBDA_TASK_ROOT")
+            or not settings.ENABLE_CORS_MIDDLEWARE
+        )
+        if is_lambda and file_size > 6 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/lambda-payload-limit",
+                    "title": "LAMBDA_PAYLOAD_LIMIT_EXCEEDED",
+                    "status": 413,
+                    "detail": (
+                        f"El archivo ({file_size} bytes) excede el límite de 6 MB soportado por AWS Lambda "
+                        "en modo síncrono/buffered. Para documentos de hasta 30 MB, cárguelos directamente "
+                        "al bucket privado de Supabase Storage ('teacher-materials') y envíe la referencia "
+                        "'storage_path' al servicio."
+                    ),
+                    "code": "LAMBDA_PAYLOAD_LIMIT_EXCEEDED",
+                },
+            )
+
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/file-too-large",
+                    "title": "FILE_TOO_LARGE",
+                    "status": 413,
+                    "detail": f"El archivo supera el límite de 30 MB (tamaño: {file_size} bytes).",
+                    "code": "FILE_TOO_LARGE",
+                },
+            )
+
+        # Determine MIME type
+        filename = file.filename or "uploaded_document"
+        detected_mime = file.content_type or ""
+        if filename.lower().endswith(".pdf") or content.startswith(PDF_MAGIC_BYTES):
+            detected_mime = "application/pdf"
+        elif filename.lower().endswith(".pptx") or content.startswith(ZIP_MAGIC_BYTES):
+            detected_mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/unsupported-media-type",
+                    "title": "UNSUPPORTED_MIME_TYPE",
+                    "status": 415,
+                    "detail": "Solo se admiten documentos en formato PDF y presentaciones PPTX.",
+                    "code": "UNSUPPORTED_MIME_TYPE",
+                },
+            )
+
+        checksum = hashlib.sha256(content).hexdigest()
+        clean_filename = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)
+        storage_folder = course_id if course_id else "general"
+        computed_path = f"{user.tenant_id}/{storage_folder}/{clean_filename}"
+
+        # If storage client is in-memory, store directly into simulated store
+        if isinstance(storage_client, InMemoryStorageClient):
+            storage_client.upload_file("teacher-materials", computed_path, content)
+
+        return UploadMaterialResponse(
+            storage_path=computed_path,
+            storage_bucket="teacher-materials",
+            original_filename=filename,
+            mime_type=detected_mime,
+            file_size_bytes=file_size,
+            file_checksum=checksum,
         )
 
-    if file_size > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail={
-                "type": "https://api.plataformamicro.edu.pe/errors/file-too-large",
-                "title": "FILE_TOO_LARGE",
-                "status": 413,
-                "detail": f"El archivo supera el límite de 30 MB (tamaño: {file_size} bytes).",
-                "code": "FILE_TOO_LARGE",
-            },
+    # Path B: Direct Supabase Storage reference (file already uploaded to Supabase Storage by frontend)
+    if storage_path is not None:
+        if storage_bucket != "teacher-materials":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/invalid-storage",
+                    "title": "Bucket No Permitido",
+                    "status": 400,
+                    "detail": "Los materiales docentes deben almacenarse en el bucket 'teacher-materials'.",
+                    "code": "INVALID_STORAGE_BUCKET",
+                },
+            )
+
+        try:
+            validate_storage_authorization(
+                storage_path=storage_path,
+                tenant_id=user.tenant_id,
+                storage_bucket=storage_bucket,
+            )
+        except ContentGenerationError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail={
+                    "type": f"https://api.plataformamicro.edu.pe/errors/{e.code.lower().replace('_', '-')}",
+                    "title": e.code,
+                    "status": e.status_code,
+                    "detail": e.message_safe,
+                    "code": e.code,
+                },
+            ) from e
+
+        # Validate course scope if path targets a specific course folder
+        effective_path_course = course_id
+        if not effective_path_course:
+            cleaned_path_segs = storage_path.strip().replace("\\", "/").strip("/").split("/")
+            if len(cleaned_path_segs) >= 3 and cleaned_path_segs[1] != "general":
+                effective_path_course = cleaned_path_segs[1]
+
+        if (
+            user.role == "teacher"
+            and effective_path_course
+            and effective_path_course not in user.authorized_course_ids
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/forbidden",
+                    "title": "Curso No Asignado",
+                    "status": 403,
+                    "detail": "El docente no tiene asignado el curso indicado en la ruta de almacenamiento.",
+                    "code": "COURSE_NOT_ASSIGNED",
+                },
+            )
+
+        allowed_mimes = (
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+        if not mime_type or mime_type not in allowed_mimes:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/unsupported-media-type",
+                    "title": "Tipo de Medio No Soportado",
+                    "status": 415,
+                    "detail": "Solo se admiten documentos en formato PDF y presentaciones PPTX.",
+                    "code": "UNSUPPORTED_MIME_TYPE",
+                },
+            )
+
+        if not file_size_bytes or file_size_bytes <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/invalid-file",
+                    "title": "Tamaño de Archivo Inválido",
+                    "status": 400,
+                    "detail": "El tamaño del archivo debe ser mayor a 0 bytes.",
+                    "code": "INVALID_FILE_SIZE",
+                },
+            )
+
+        if file_size_bytes > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/file-too-large",
+                    "title": "FILE_TOO_LARGE",
+                    "status": 413,
+                    "detail": f"El archivo supera el límite de 30 MB (tamaño: {file_size_bytes} bytes).",
+                    "code": "FILE_TOO_LARGE",
+                },
+            )
+
+        if not file_checksum or len(file_checksum) < 32:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "type": "https://api.plataformamicro.edu.pe/errors/invalid-file",
+                    "title": "Checksum Requerido",
+                    "status": 400,
+                    "detail": "Se requiere un hash SHA-256 válido para el archivo cargado.",
+                    "code": "INVALID_CHECKSUM",
+                },
+            )
+
+        resolved_filename = original_filename or storage_path.split("/")[-1]
+        return UploadMaterialResponse(
+            storage_path=storage_path,
+            storage_bucket=storage_bucket,
+            original_filename=resolved_filename,
+            mime_type=mime_type,
+            file_size_bytes=file_size_bytes,
+            file_checksum=file_checksum,
         )
 
-    # Determine MIME type
-    filename = file.filename or "uploaded_document"
-    mime_type = file.content_type or ""
-    if filename.lower().endswith(".pdf") or content.startswith(PDF_MAGIC_BYTES):
-        mime_type = "application/pdf"
-    elif filename.lower().endswith(".pptx") or content.startswith(ZIP_MAGIC_BYTES):
-        mime_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail={
-                "type": "https://api.plataformamicro.edu.pe/errors/unsupported-media-type",
-                "title": "UNSUPPORTED_MIME_TYPE",
-                "status": 415,
-                "detail": "Solo se admiten documentos en formato PDF y presentaciones PPTX.",
-                "code": "UNSUPPORTED_MIME_TYPE",
-            },
-        )
-
-    checksum = hashlib.sha256(content).hexdigest()
-    clean_filename = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)
-    storage_folder = course_id if course_id else "general"
-    storage_path = f"{user.tenant_id}/{storage_folder}/{clean_filename}"
-
-    # If storage client is in-memory, store directly into simulated store
-    if isinstance(storage_client, InMemoryStorageClient):
-        storage_client.upload_file("teacher-materials", storage_path, content)
-
-    return UploadMaterialResponse(
-        storage_path=storage_path,
-        storage_bucket="teacher-materials",
-        original_filename=filename,
-        mime_type=mime_type,
-        file_size_bytes=file_size,
-        file_checksum=checksum,
+    # Path C: Neither file nor storage_path provided
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "type": "https://api.plataformamicro.edu.pe/errors/invalid-file",
+            "title": "MISSING_FILE_OR_STORAGE_PATH",
+            "status": 400,
+            "detail": "Debe proporcionar un archivo para carga directa o una referencia 'storage_path' válida en Supabase Storage.",
+            "code": "MISSING_FILE_OR_STORAGE_PATH",
+        },
     )

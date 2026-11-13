@@ -32,6 +32,11 @@ import {
   getTeacherReports,
   TeacherReportsResponse,
 } from "@/lib/api/teacher";
+import {
+  INSUFFICIENT_TEXT,
+  MASTERY_THRESHOLDS,
+  formatMetricValue,
+} from "@/lib/data-provenance";
 
 export default function TeacherReportsPage() {
   const [reports, setReports] = useState<TeacherReportsResponse | null>(null);
@@ -79,7 +84,7 @@ export default function TeacherReportsPage() {
           const kcName = kcObj ? kcObj.name : kcId;
           rows.push(
             [
-              `"${st.student_code || st.student_name}"`,
+              `"${st.student_code || "sin_codigo"}"`,
               `"${st.section_name}"`,
               `"${kcName}"`,
               data.accuracy,
@@ -92,7 +97,7 @@ export default function TeacherReportsPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `telemetria_retencion_seudonimizada_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute("download", `telemetria_observada_${new Date().toISOString().slice(0, 10)}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -120,6 +125,8 @@ export default function TeacherReportsPage() {
   const heatmap = reports?.mastery_heatmap;
   const kcOverview = reports?.kc_performance_overview || [];
   const trajectory = reports?.retention_growth_trajectory || [];
+  // No data at all must read as "query failed", not "there is no evidence".
+  const dataUnavailable = Boolean(error) && !reports;
 
   return (
     <div className="space-y-8 pb-12">
@@ -127,13 +134,14 @@ export default function TeacherReportsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-[#0A635F]">
-            INVESTIGACIÓN & MODELADO PREDICTIVO
+            SEGUIMIENTO PEDAGÓGICO
           </p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-1">
-            Reportes: Resultados observados y seguimiento de retención
+            Reportes: resultados observados
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Telemetría objetiva para el seguimiento de la memoria a largo plazo y la evaluación cuasiexperimental.
+            Telemetría objetiva de precisión por estudiante, sección y componente
+            de conocimiento.
           </p>
         </div>
 
@@ -145,7 +153,7 @@ export default function TeacherReportsPage() {
             className="rounded-xl text-xs gap-2 border-slate-200 hover:border-teal-400 bg-white shadow-2xs"
           >
             <Download className="w-4 h-4 text-teal-700" />
-            {downloadSuccess ? "¡Dataset descargado!" : "Exportar dataset seudonimizado"}
+            {downloadSuccess ? "¡Dataset descargado!" : "Exportar dataset observado"}
           </Button>
         </div>
       </div>
@@ -187,6 +195,22 @@ export default function TeacherReportsPage() {
         </div>
       )}
 
+      {!loading && reports && !aiInsight && (
+        <Card className="rounded-3xl border-dashed border-slate-200 bg-white p-5 flex items-start gap-3">
+          <Brain className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              Sin insight validado por ahora
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              No se muestra ningún insight porque no existe un modelo predictivo
+              validado que lo respalde. Los reportes siguientes contienen solo
+              datos observados.
+            </p>
+          </div>
+        </Card>
+      )}
+
       {/* Sections Telemetry Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         {sectionsSummary.map((sec) => (
@@ -197,20 +221,31 @@ export default function TeacherReportsPage() {
                 {sec.students_count} alumnos
               </Badge>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900">{sec.average_score}%</p>
+            <p className="text-2xl font-extrabold text-slate-900">
+              {formatMetricValue(sec.average_score, {
+                unit: "%",
+                decimals: 1,
+                insufficient: sec.average_score === null,
+              })}
+            </p>
             <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
               <span>{sec.completed_attempts} cuestionarios evaluados</span>
               <span className="text-teal-700 font-semibold">{sec.reviews_completed} repasos</span>
             </div>
           </Card>
         ))}
+        {reports && sectionsSummary.length === 0 && (
+          <Card className="rounded-2xl border-dashed border-slate-200 p-5 text-xs text-slate-500 col-span-full text-center">
+            No hay secciones asignadas para mostrar.
+          </Card>
+        )}
       </div>
 
       {/* Student Mastery Heat Map (Captura 23) */}
       <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
         <div>
           <h2 className="text-xl font-bold text-slate-900">
-            Student Mastery Heat Map (Componentes de Conocimiento)
+            Mapa de calor de precisión por componente
           </h2>
           <p className="text-xs text-slate-500">
             Visualización matricial de la precisión observada por estudiante y concepto evaluado
@@ -250,9 +285,9 @@ export default function TeacherReportsPage() {
                       }
                       const acc = cell.accuracy;
                       let bgClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
-                      if (acc < 60) {
+                      if (acc < MASTERY_THRESHOLDS.inProgress) {
                         bgClass = "bg-rose-50 text-rose-800 border-rose-200";
-                      } else if (acc < 80) {
+                      } else if (acc < MASTERY_THRESHOLDS.consolidated) {
                         bgClass = "bg-amber-50 text-amber-800 border-amber-200";
                       }
                       return (
@@ -270,7 +305,9 @@ export default function TeacherReportsPage() {
           </div>
         ) : (
           <div className="py-8 text-center text-xs text-slate-400">
-            No hay suficientes respuestas registradas para generar el mapa de calor.
+            {dataUnavailable
+              ? "No se pudo consultar el mapa de calor: la solicitud falló."
+              : "No hay suficientes respuestas registradas para generar el mapa de calor."}
           </div>
         )}
       </Card>
@@ -281,7 +318,7 @@ export default function TeacherReportsPage() {
         <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
-              Class Performance Overview
+              Precisión observada por componente de conocimiento
             </h2>
             <p className="text-xs text-slate-500">
               Precisión observada por Componente de Conocimiento (KC)
@@ -289,15 +326,29 @@ export default function TeacherReportsPage() {
           </div>
 
           <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={kcOverview} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="kc_name" tick={{ fontSize: 11, fill: "#64748b" }} interval={0} angle={-15} textAnchor="end" />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip formatter={(val: any) => [`${val}%`, "Precisión promedio"]} />
-                <Bar dataKey="average_accuracy" fill="#0A635F" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {kcOverview.some((kc) => kc.average_accuracy !== null) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={kcOverview} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="kc_name" tick={{ fontSize: 11, fill: "#64748b" }} interval={0} angle={-15} textAnchor="end" />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#64748b" }} />
+                  <Tooltip formatter={(val: any) => [`${val}%`, "Precisión promedio"]} />
+                  <Bar dataKey="average_accuracy" fill="#0A635F" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center gap-2 rounded-2xl bg-slate-50 border border-dashed border-slate-200 px-6">
+                <BarChart3 className="w-8 h-8 text-slate-400" />
+                <p className="text-sm font-semibold text-slate-800">
+                  {dataUnavailable ? "No disponible" : INSUFFICIENT_TEXT}
+                </p>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  {dataUnavailable
+                    ? "No se pudo consultar la precisión por componente: la solicitud falló."
+                    : "Cuando los estudiantes respondan preguntas de estos componentes, aparecerá su precisión observada."}
+                </p>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -305,7 +356,7 @@ export default function TeacherReportsPage() {
         <Card className="rounded-3xl border-slate-200/80 p-6 md:p-8 bg-white shadow-xs space-y-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
-              Trayectoria de retención observada
+              Trayectoria de precisión observada
             </h2>
             <p className="text-xs text-slate-500">
               Precisión semanal calculada sobre answer_events. Sin proyecciones
@@ -317,11 +368,14 @@ export default function TeacherReportsPage() {
             <div className="h-72 flex flex-col items-center justify-center text-center gap-2 rounded-2xl bg-slate-50 border border-dashed border-slate-200 px-6">
               <BarChart3 className="w-8 h-8 text-slate-400" />
               <p className="text-sm font-semibold text-slate-800">
-                Aún no hay evidencia semanal
+                {dataUnavailable
+                  ? "No se pudo consultar la trayectoria"
+                  : "Aún no hay evidencia semanal"}
               </p>
               <p className="text-xs text-slate-500 max-w-sm">
-                Cuando los estudiantes respondan actividades, aquí aparecerá la
-                precisión observada por semana.
+                {dataUnavailable
+                  ? "La solicitud falló; no se asume un historial vacío."
+                  : "Cuando los estudiantes respondan actividades, aquí aparecerá la precisión observada por semana."}
               </p>
             </div>
           ) : (

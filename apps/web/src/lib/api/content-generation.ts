@@ -159,20 +159,13 @@ async function getAuthHeaders(includeContentType: boolean = true): Promise<Recor
     const { data: { session }, error } = await supabase.auth.getSession();
     if (!error && session?.access_token) {
       headers["Authorization"] = `Bearer ${session.access_token}`;
-      return headers;
     }
   } catch (err) {
     // In environments without window or active Supabase context
   }
 
-  // Development/Test fallback only when explicitly enabled and NOT in production
-  if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ENABLE_DEMO_AUTH === "true") {
-    headers["X-User-Id"] = "d0000000-0000-0000-0000-000000000001";
-    headers["X-Tenant-Id"] = "a0000000-0000-0000-0000-000000000001";
-    headers["X-User-Role"] = "teacher";
-    headers["X-Course-Ids"] = "c0000000-0000-0000-0000-000000000001";
-  }
-
+  // No identity fallback: requests without a verified session are sent
+  // unauthenticated and the FastAPI backend rejects them with 401.
   return headers;
 }
 
@@ -188,15 +181,8 @@ export const contentGenerationApi = {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch {
-      return [
-        {
-          id: "11111111-1111-1111-1111-cccccccccccc",
-          code: "CIEN-5SEC",
-          name: "Ciencias",
-          description: "Biología, química y ambiente para 5.° de secundaria",
-          is_active: true,
-        },
-      ];
+      // No hidden subject-specific fallback: the UI must show an empty state.
+      return [];
     }
   },
 
@@ -212,16 +198,8 @@ export const contentGenerationApi = {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch {
-      return [
-        {
-          id: "11111111-1111-1111-1111-eeeeeeeeeeee",
-          name: "Fotosíntesis y Cloroplastos",
-          description: "Mecanismos de conversión fotoquímica",
-          unit_id: null,
-          unit_title: "Metabolismo Celular",
-          difficulty_prior: 0.5,
-        },
-      ];
+      // No hidden subject-specific fallback: the UI must show an empty state.
+      return [];
     }
   },
 
@@ -353,8 +331,74 @@ export const contentGenerationApi = {
 
   /**
    * Upload curricular material (PDF / PPTX <= 30MB).
+   * Direct Supabase Storage upload is preferred for large files (> 6 MB) to prevent
+   * Lambda buffered payload limit breaches, sending only storage_path reference to ML-API.
    */
   async uploadMaterial(file: File, courseId?: string): Promise<UploadMaterialResponse> {
+    // Attempt direct Supabase Storage upload for large files (> 6MB) or when session is active
+    if (file.size > 6 * 1024 * 1024) {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          let tenantId = (session.user?.app_metadata?.tenant_id as string) || (session.user?.user_metadata?.tenant_id as string);
+          if (!tenantId && session.user?.id) {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("tenant_id")
+              .eq("id", session.user.id)
+              .maybeSingle();
+            if (profile?.tenant_id) {
+              tenantId = profile.tenant_id;
+            }
+          }
+
+          if (!tenantId) {
+            throw new Error("No se pudo determinar el tenant_id del usuario autenticado.");
+          }
+
+          const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const folder = courseId || "general";
+          const storagePath = `${tenantId}/${folder}/${cleanName}`;
+
+          // Calculate SHA-256 checksum in browser
+          const buffer = await file.arrayBuffer();
+          const digest = await crypto.subtle.digest("SHA-256", buffer);
+          const checksum = Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+
+          const { error: uploadError } = await supabase.storage
+            .from("teacher-materials")
+            .upload(storagePath, file, { upsert: true });
+
+          if (!uploadError) {
+            const formData = new FormData();
+            formData.append("storage_path", storagePath);
+            formData.append("storage_bucket", "teacher-materials");
+            formData.append("original_filename", file.name);
+            formData.append("mime_type", file.type || (file.name.endsWith(".pptx") ? "application/vnd.openxmlformats-officedocument.presentationml.presentation" : "application/pdf"));
+            formData.append("file_size_bytes", String(file.size));
+            formData.append("file_checksum", checksum);
+            if (courseId) formData.append("course_id", courseId);
+
+            const headers = await getAuthHeaders(false);
+            const res = await fetch(`${API_BASE_URL}/api/v1/content-generation/upload-material`, {
+              method: "POST",
+              headers,
+              body: formData,
+            });
+            if (res.ok) {
+              return await res.json();
+            }
+          }
+        }
+      } catch {
+        // Fallback to standard multipart upload
+      }
+    }
+
     const formData = new FormData();
     formData.append("file", file);
     if (courseId) formData.append("course_id", courseId);

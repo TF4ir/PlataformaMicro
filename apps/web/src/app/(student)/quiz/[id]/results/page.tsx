@@ -24,6 +24,7 @@ import {
   AttemptResultsResponse,
 } from "@/lib/api/learning";
 import { EmpatheticCallout } from "@/components/student/empathetic-callout";
+import { MASTERY_THRESHOLDS } from "@/lib/data-provenance";
 
 export default function QuizResultsFeedbackPage() {
   const params = useParams();
@@ -78,7 +79,7 @@ export default function QuizResultsFeedbackPage() {
     );
   }
 
-  if (error || !results) {
+  if (error || !results || results.total_questions <= 0) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
         <Card className="max-w-md w-full p-8 text-center space-y-5 rounded-3xl border-slate-200 shadow-sm bg-white">
@@ -88,7 +89,10 @@ export default function QuizResultsFeedbackPage() {
           <div className="space-y-2">
             <h2 className="text-xl font-bold text-slate-900">Resultados no disponibles</h2>
             <p className="text-xs text-slate-600 leading-relaxed">
-              {error || "No pudimos cargar los resultados de este intento."}
+              {error ||
+                (results
+                  ? "Este intento no tiene respuestas registradas, por lo que no genera un resultado."
+                  : "No pudimos cargar los resultados de este intento.")}
             </p>
           </div>
           <Link href="/courses">
@@ -102,8 +106,10 @@ export default function QuizResultsFeedbackPage() {
   }
 
   const scorePercent = Math.round(results.score);
-  const isHighMastery = scorePercent >= 80;
-  const isMediumMastery = scorePercent >= 60 && scorePercent < 80;
+  const isHighMastery = scorePercent >= MASTERY_THRESHOLDS.consolidated;
+  const isMediumMastery =
+    scorePercent >= MASTERY_THRESHOLDS.inProgress &&
+    scorePercent < MASTERY_THRESHOLDS.consolidated;
 
   return (
     <div className="min-h-screen bg-white flex flex-col justify-between py-10 px-6">
@@ -179,7 +185,7 @@ export default function QuizResultsFeedbackPage() {
             <p className="text-xl font-black text-slate-800 pt-1">
               {results.completed_at ? "Completado" : "En proceso"}
             </p>
-            <p className="text-xs text-slate-500 font-medium">Registrado inmutable</p>
+            <p className="text-xs text-slate-500 font-medium">Registro del intento</p>
           </Card>
         </div>
 
@@ -200,8 +206,11 @@ export default function QuizResultsFeedbackPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {results.kc_summaries.map((kc) => {
                 const masteryRate = Math.round(kc.mastery_rate);
-                const isConsolidated = masteryRate >= 80;
-                const isConsolidating = masteryRate >= 50 && masteryRate < 80;
+                const isConsolidated =
+                  masteryRate >= MASTERY_THRESHOLDS.consolidated;
+                const isConsolidating =
+                  masteryRate >= MASTERY_THRESHOLDS.inProgress &&
+                  masteryRate < MASTERY_THRESHOLDS.consolidated;
 
                 return (
                   <Card
@@ -348,8 +357,8 @@ export default function QuizResultsFeedbackPage() {
         )}
 
         <EmpatheticCallout title="Tus respuestas fortalecen tu aprendizaje">
-          Cada interacción que realizas queda registrada para que nuestro sistema pueda planificar
-          futuros repasos en el momento óptimo antes de que comience el olvido.
+          Cada interacción que realizas queda registrada para que el sistema pueda
+          planificar repasos oportunos según tu actividad observada.
         </EmpatheticCallout>
 
         {/* Navigation Action Buttons */}

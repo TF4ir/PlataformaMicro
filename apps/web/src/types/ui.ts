@@ -117,12 +117,30 @@ export interface StudentAnalytics {
   }[];
 }
 
+export type ApiStatus = "healthy" | "cold_start" | "degraded" | "unavailable";
+
+export type SecurityVerificationStatus = "verified" | "unverified" | "failed";
+
 export interface SystemStatusData {
-  apiStatus: "healthy" | "cold_start" | "degraded";
-  coldStartEstimatedSeconds: number;
-  activeModel: "DAS3H_Candidate" | "RuleBased_Fallback";
-  inferenceLatencyMs: number;
-  supabaseRlsStatus: "active_enforced";
-  pseudonymizationStatus: "compliant_law_29733";
-  lastHeartbeat: string;
+  apiStatus: ApiStatus;
+  /**
+   * Only populated when the API actually reported a cold-start estimate.
+   * `null` means "not reported", never zero.
+   */
+  coldStartEstimatedSeconds: number | null;
+  /**
+   * Only populated when the API explicitly reports the active model.
+   * `null` means "not reported", never a guessed fallback model.
+   */
+  activeModel: string | null;
+  /**
+   * Only set when a request was actually timed. `null` means "not measured",
+   * which the UI must render as "No medida".
+   */
+  inferenceLatencyMs: number | null;
+  /** Security controls are unverified unless the product checked them. */
+  supabaseRlsStatus: SecurityVerificationStatus;
+  pseudonymizationStatus: SecurityVerificationStatus;
+  /** ISO timestamp of the last successful check, or null when never checked. */
+  lastHeartbeat: string | null;
 }

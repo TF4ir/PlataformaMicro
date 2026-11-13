@@ -5445,8 +5445,15 @@
       "Body_upload_material_api_v1_content_generation_upload_material_post": {
         "properties": {
           "file": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "File"
           },
           "course_id": {
@@ -5459,12 +5466,69 @@
               }
             ],
             "title": "Course Id"
+          },
+          "storage_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Path"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "file_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size Bytes"
+          },
+          "file_checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Checksum"
+          },
+          "storage_bucket": {
+            "type": "string",
+            "title": "Storage Bucket",
+            "default": "teacher-materials"
           }
         },
         "type": "object",
-        "required": [
-          "file"
-        ],
         "title": "Body_upload_material_api_v1_content_generation_upload_material_post"
       },
       "CanonicalOptionItem": {

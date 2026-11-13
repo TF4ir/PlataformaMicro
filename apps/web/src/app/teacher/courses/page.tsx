@@ -433,7 +433,7 @@ export default function TeacherCoursesPage() {
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Ej. Fotosíntesis: Fase luminosa y pigmentos"
+                  placeholder="Ej. Concepto central de la unidad"
                   className="w-full h-10 px-3 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
                 />
               </div>

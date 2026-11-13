@@ -38,9 +38,7 @@ export async function getAuthToken(): Promise<string | null> {
   return null;
 }
 
-export async function getAuthHeaders(
-  roleFallback: "teacher" | "student" = "student"
-): Promise<Record<string, string>> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -48,23 +46,10 @@ export async function getAuthHeaders(
   const token = await getAuthToken();
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
-    return headers;
   }
 
-  // Development/Test fallback only when explicitly enabled and NOT in production
-  if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ENABLE_DEMO_AUTH === "true") {
-    if (roleFallback === "teacher") {
-      headers["X-User-Id"] = "d0000000-0000-0000-0000-000000000001";
-      headers["X-Tenant-Id"] = "a0000000-0000-0000-0000-000000000001";
-      headers["X-User-Role"] = "teacher";
-      headers["X-Course-Ids"] = "c0000000-0000-0000-0000-000000000001";
-    } else {
-      headers["X-User-Id"] = "e0000000-0000-0000-0000-000000000001";
-      headers["X-Tenant-Id"] = "a0000000-0000-0000-0000-000000000001";
-      headers["X-User-Role"] = "student";
-    }
-  }
-
+  // No identity fallback: requests without a verified session are sent
+  // unauthenticated and the FastAPI backend rejects them with 401.
   return headers;
 }
 
@@ -73,8 +58,9 @@ export async function apiFetch<T>(
   options: RequestInit = {},
   roleFallback: "teacher" | "student" = "student"
 ): Promise<T> {
+  void roleFallback;
   const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
-  const authHeaders = await getAuthHeaders(roleFallback);
+  const authHeaders = await getAuthHeaders();
   const headers = {
     ...authHeaders,
     ...((options.headers as Record<string, string>) || {}),

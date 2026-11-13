@@ -17,6 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { studentLearningApi, StudentDashboardResponse } from "@/lib/api/learning";
+import {
+  UNAVAILABLE_TEXT,
+  formatMetricWithMeta,
+} from "@/lib/data-provenance";
 
 export default function StudentDashboardPage() {
   const [dashboardData, setDashboardData] = useState<StudentDashboardResponse | null>(null);
@@ -81,6 +85,53 @@ export default function StudentDashboardPage() {
   const courses = dashboardData?.enrolled_courses || [];
   const recentActivities = dashboardData?.recent_activities || [];
 
+  const weeklyMinutesText = analytics
+    ? formatMetricWithMeta(
+        analytics.metric_meta?.weekly_learning_minutes,
+        analytics.weekly_learning_minutes,
+        { unit: "min" }
+      )
+    : UNAVAILABLE_TEXT;
+  const completedActivitiesText = analytics
+    ? formatMetricWithMeta(
+        analytics.metric_meta?.completed_activities_count,
+        analytics.completed_activities_count
+      )
+    : UNAVAILABLE_TEXT;
+  const consolidatedText = analytics
+    ? formatMetricWithMeta(
+        analytics.metric_meta?.consolidated_concepts_count,
+        analytics.consolidated_concepts_count
+      )
+    : UNAVAILABLE_TEXT;
+  const totalConceptsText = analytics
+    ? formatMetricWithMeta(
+        analytics.metric_meta?.total_concepts_count,
+        analytics.total_concepts_count
+      )
+    : UNAVAILABLE_TEXT;
+  const reviewedText = analytics
+    ? formatMetricWithMeta(
+        analytics.metric_meta?.reviewed_concepts_count,
+        analytics.reviewed_concepts_count
+      )
+    : UNAVAILABLE_TEXT;
+  const accuracyText = analytics
+    ? formatMetricWithMeta(
+        analytics.metric_meta?.observed_accuracy_percentage,
+        analytics.observed_accuracy_percentage,
+        { unit: "%", decimals: 1 }
+      )
+    : UNAVAILABLE_TEXT;
+  const accuracyIsObserved =
+    analytics?.metric_meta?.observed_accuracy_percentage.status === "observed" &&
+    typeof analytics.observed_accuracy_percentage === "number";
+  const conceptsAreObserved =
+    analytics?.metric_meta?.consolidated_concepts_count.status === "observed" &&
+    analytics?.metric_meta?.total_concepts_count.status === "observed";
+  // A failed request must never be presented as "you have no pending reviews".
+  const dataUnavailable = Boolean(error) && !dashboardData;
+
   return (
     <div className="space-y-8 pb-12">
       {/* Header Greeting */}
@@ -92,9 +143,11 @@ export default function StudentDashboardPage() {
           Hola, {studentName.split(" ")[0]}
         </h1>
         <p className="text-slate-500 text-sm mt-1">
-          {primaryReview
-            ? "Tienes repasos adaptativos recomendados para consolidar tu aprendizaje a largo plazo."
-            : "Estás al día con tus actividades. Explora tus cursos o refuerza nuevos temas."}
+          {dataUnavailable
+            ? "No pudimos cargar tu información en este momento."
+            : primaryReview
+              ? "Tienes repasos adaptativos recomendados para consolidar tu aprendizaje a largo plazo."
+              : "No hay repasos programados en tu plan actual. Explora tus cursos o refuerza nuevos temas."}
         </p>
       </div>
 
@@ -102,7 +155,8 @@ export default function StudentDashboardPage() {
         <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
           <span>
-            No se pudo sincronizar la telemetría en tiempo real ({error}). Mostrando datos almacenados localmente.
+            No se pudieron cargar tus datos ({error}). No se muestran cifras
+            estimadas ni de respaldo.
           </span>
         </div>
       )}
@@ -143,13 +197,21 @@ export default function StudentDashboardPage() {
             </h2>
 
             <p className="text-teal-100/90 text-sm leading-relaxed">
-              Un repaso breve de 3 a 5 minutos consolidará tus conexiones conceptuales y evitará el decaimiento natural de la retención.
+              Un repaso breve de{" "}
+              {primaryReview.estimated_minutes !== null
+                ? `${primaryReview.estimated_minutes} minutos`
+                : "duración no reportada"}{" "}
+              te ayuda a volver sobre este concepto según tu plan de repaso.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 text-xs text-teal-200/90 pt-1">
               <div className="flex items-center gap-1.5">
                 <Clock className="w-4 h-4" />
-                <span>{primaryReview.estimated_minutes} minutos estimados</span>
+                <span>
+                  {primaryReview.estimated_minutes !== null
+                    ? `${primaryReview.estimated_minutes} minutos estimados`
+                    : "Duración no reportada"}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <FileText className="w-4 h-4" />
@@ -170,17 +232,39 @@ export default function StudentDashboardPage() {
             </div>
           </div>
         </div>
+      ) : dataUnavailable ? (
+        <div className="rounded-3xl p-8 bg-gradient-to-r from-amber-50 to-slate-50 border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="space-y-2">
+            <Badge variant="warning" className="text-xs px-3 py-1">
+              Sin consulta
+            </Badge>
+            <h2 className="text-2xl font-bold text-slate-900">
+              No pudimos consultar tus repasos
+            </h2>
+            <p className="text-slate-600 text-sm max-w-lg">
+              La consulta falló, por lo que no se asume que no tengas repasos
+              pendientes. Vuelve a intentarlo cuando la conexión esté disponible.
+            </p>
+          </div>
+          <Link href="/courses">
+            <Button className="bg-[#0A635F] hover:bg-[#0B2D34] text-white rounded-xl">
+              Explorar cursos
+            </Button>
+          </Link>
+        </div>
       ) : (
         <div className="rounded-3xl p-8 bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-100 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="space-y-2">
             <Badge variant="success" className="text-xs px-3 py-1">
-              Retención Óptima
+              Sin repasos pendientes
             </Badge>
             <h2 className="text-2xl font-bold text-slate-900">
-              ¡Estás al día con tus temas!
+              No tienes repasos programados por ahora
             </h2>
             <p className="text-slate-600 text-sm max-w-lg">
-              No tienes conceptos en riesgo de olvido hoy. Puedes repasar tus cursos o resolver actividades formativas disponibles.
+              Tu plan actual no tiene repasos pendientes. Esto no certifica tu
+              nivel de retención: puedes continuar con tus actividades formativas
+              disponibles.
             </p>
           </div>
           <Link href="/courses">
@@ -195,7 +279,9 @@ export default function StudentDashboardPage() {
       <div className="space-y-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Tu panorama</h2>
-          <p className="text-xs text-slate-500">Métricas reales de interacción y aprendizaje</p>
+          <p className="text-xs text-slate-500">
+            Métricas observadas a partir de tu actividad registrada
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -207,14 +293,14 @@ export default function StudentDashboardPage() {
               </div>
               <div>
                 <p className="text-3xl font-extrabold text-slate-900">
-                  {analytics?.weekly_learning_minutes ?? 0} min
+                  {weeklyMinutesText}
                 </p>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Tiempo de microaprendizaje
+                  Tiempo de microaprendizaje (7 días)
                 </p>
               </div>
               <p className="text-xs font-semibold text-teal-700">
-                {analytics?.completed_activities_count ?? 0} actividades completadas
+                Actividades completadas: {completedActivitiesText}
               </p>
             </div>
           </Card>
@@ -227,17 +313,25 @@ export default function StudentDashboardPage() {
               </div>
               <div>
                 <p className="text-3xl font-extrabold text-slate-900">
-                  {analytics?.consolidated_concepts_count ?? 0}
-                  <span className="text-lg font-normal text-slate-400">
-                    /{analytics?.total_concepts_count ?? 0}
-                  </span>
+                  {conceptsAreObserved ? (
+                    <>
+                      {consolidatedText}
+                      <span className="text-lg font-normal text-slate-400">
+                        /{totalConceptsText}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-lg font-semibold text-slate-600">
+                      {consolidatedText}
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   Conceptos consolidados
                 </p>
               </div>
               <p className="text-xs font-medium text-slate-500">
-                {analytics?.reviewed_concepts_count ?? 0} repasados oportunamente
+                Repasos completados: {reviewedText}
               </p>
             </div>
           </Card>
@@ -250,19 +344,25 @@ export default function StudentDashboardPage() {
               </div>
               <div>
                 <p className="text-3xl font-extrabold text-slate-900">
-                  {analytics?.observed_accuracy_percentage ?? 0}%
+                  {accuracyText}
                 </p>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   Precisión observada
                 </p>
               </div>
-              <div className="w-full">
-                <Progress
-                  value={analytics?.observed_accuracy_percentage ?? 0}
-                  className="h-2 bg-slate-100"
-                  indicatorClassName="bg-gradient-to-r from-amber-500 to-teal-600"
-                />
-              </div>
+              {accuracyIsObserved ? (
+                <div className="w-full">
+                  <Progress
+                    value={analytics?.observed_accuracy_percentage ?? 0}
+                    className="h-2 bg-slate-100"
+                    indicatorClassName="bg-gradient-to-r from-amber-500 to-teal-600"
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  Se requiere al menos una respuesta registrada.
+                </p>
+              )}
             </div>
           </Card>
         </div>
@@ -287,9 +387,24 @@ export default function StudentDashboardPage() {
 
           {courses.length === 0 ? (
             <Card className="p-8 text-center rounded-2xl border-dashed border-slate-200">
-              <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-700">Sin cursos asignados aún</p>
-              <p className="text-xs text-slate-400 mt-1">Tu docente o tutor te asignará a tu sección correspondiente.</p>
+              {dataUnavailable ? (
+                <>
+                  <AlertCircle className="w-10 h-10 text-amber-400 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-700">
+                    No se pudieron consultar tus cursos
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    La solicitud falló; no se asume que no tengas cursos
+                    asignados.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-700">Sin cursos asignados aún</p>
+                  <p className="text-xs text-slate-400 mt-1">Tu docente o tutor te asignará a tu sección correspondiente.</p>
+                </>
+              )}
             </Card>
           ) : (
             courses.map((course) => (
@@ -351,8 +466,17 @@ export default function StudentDashboardPage() {
           <Card className="rounded-2xl border-slate-200/80 p-4 shadow-xs divide-y divide-slate-100">
             {upcomingReviews.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                No tienes repasos pendientes por ahora.
+                {dataUnavailable ? (
+                  <>
+                    <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                    No se pudieron consultar los repasos.
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                    No tienes repasos pendientes por ahora.
+                  </>
+                )}
               </div>
             ) : (
               upcomingReviews.map((rev, idx) => (
@@ -362,7 +486,11 @@ export default function StudentDashboardPage() {
                       <span className="text-[10px] uppercase font-bold tracking-wider text-amber-700">
                         {rev.is_urgent ? "HOY" : "PRÓX"}
                       </span>
-                      <span className="text-xs font-extrabold leading-none">{rev.estimated_minutes}m</span>
+                      <span className="text-xs font-extrabold leading-none">
+                        {rev.estimated_minutes !== null
+                          ? `${rev.estimated_minutes}m`
+                          : "—"}
+                      </span>
                     </div>
                     <div className="min-w-0">
                       <h4 className="text-sm font-bold text-slate-900 truncate">{rev.knowledge_component_name}</h4>
@@ -404,7 +532,11 @@ export default function StudentDashboardPage() {
                       variant={act.latest_attempt_status === "completed" ? "success" : "lavender"}
                       className="text-[10px]"
                     >
-                      {act.latest_attempt_status === "completed" ? `Completado (${act.latest_score}%)` : "Pendiente"}
+                      {act.latest_attempt_status === "completed"
+                        ? act.latest_score !== null
+                          ? `Completado (${act.latest_score}%)`
+                          : "Completado"
+                        : "Pendiente"}
                     </Badge>
                   </div>
                   <h3 className="text-base font-bold text-slate-900">{act.title}</h3>

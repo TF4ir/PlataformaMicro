@@ -299,7 +299,7 @@ class SyntheticMemoryGenerator:
             if tau >= 1.0:
                 return 0.0
             crit_days = ((tau ** (-1.0 / b)) - 1.0) / a
-            return round(max(0.0, crit_days * 86400.0), 2)
+            return float(round(max(0.0, crit_days * 86400.0), 2))
 
         elif scenario == SyntheticScenario.MODEL_MISMATCH:
             # exp(-(delta / eta)^kappa) = tau => delta = eta * (-ln(tau))^(1/kappa)
@@ -308,6 +308,6 @@ class SyntheticMemoryGenerator:
             if tau >= 1.0:
                 return 0.0
             crit_days = eta * ((-math.log(tau)) ** (1.0 / kappa))
-            return round(max(0.0, crit_days * 86400.0), 2)
+            return float(round(max(0.0, crit_days * 86400.0), 2))
 
         return None

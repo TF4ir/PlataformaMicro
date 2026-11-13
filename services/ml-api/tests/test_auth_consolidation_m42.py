@@ -379,3 +379,91 @@ async def test_12_unsupported_jwt_algorithm_rejected():
         )
         assert res.status_code == 401
         assert res.json()["code"] == "INVALID_CREDENTIALS"
+
+
+# ==============================================================================
+# F-02 — DATABASE-ONLY IDENTITY (NO CLAIM FALLBACK)
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_13_user_metadata_role_cannot_escalate_privileges():
+    """A student cannot become a teacher by editing user_metadata/app_metadata."""
+    forged_context_jwt = create_test_jwt(
+        user_id=STUDENT_A1,
+        role="teacher",
+        tenant_id=TENANT_B,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/activities",
+            headers={"Authorization": f"Bearer {forged_context_jwt}"},
+        )
+        assert res.status_code == 403
+        assert res.json()["code"] == "INSUFFICIENT_PERMISSIONS"
+
+
+@pytest.mark.asyncio
+async def test_14_database_unavailable_fails_closed_with_503(monkeypatch):
+    """When PostgreSQL cannot verify identity, protected endpoints return 503 (not 403/claims)."""
+    import app.core.auth as auth_mod
+
+    async def unavailable(_user_uuid):
+        raise OSError("database temporarily unavailable")
+
+    monkeypatch.setattr(auth_mod, "_fetch_identity_once", unavailable)
+    monkeypatch.setattr(settings, "DB_STALE_RETRY_ATTEMPTS", 1)
+
+    teacher_claim_jwt = create_test_jwt(user_id=TEACHER_A, role="teacher")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/activities",
+            headers={"Authorization": f"Bearer {teacher_claim_jwt}"},
+        )
+        assert res.status_code == 503
+        assert res.json()["code"] == "AUTH_BACKEND_UNAVAILABLE"
+        assert res.headers.get("retry-after") == "5"
+
+
+@pytest.mark.asyncio
+async def test_15_unprovisioned_identity_is_forbidden():
+    """A valid JWT without a profiles row is rejected with IDENTITY_NOT_PROVISIONED."""
+    unprovisioned = "99999999-9999-9999-9999-999999999999"
+    token = create_test_jwt(user_id=unprovisioned, role="teacher", tenant_id=TENANT_A)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/students/me/courses",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 403
+        assert res.json()["code"] == "IDENTITY_NOT_PROVISIONED"
+
+
+@pytest.mark.asyncio
+async def test_16_stale_connection_is_retried_once(monkeypatch):
+    """A Lambda thaw may leave a stale pooled connection; one retry must recover it."""
+    import app.core.auth as auth_mod
+
+    calls = {"count": 0}
+
+    async def flaky(user_uuid):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("server closed the connection unexpectedly")
+        return TENANT_A, "student", set()
+
+    monkeypatch.setattr(auth_mod, "_fetch_identity_once", flaky)
+    monkeypatch.setattr(settings, "DB_STALE_RETRY_ATTEMPTS", 1)
+
+    student_jwt = create_test_jwt(user_id=STUDENT_A1, role="student")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            "/api/v1/students/me/courses",
+            headers={"Authorization": f"Bearer {student_jwt}"},
+        )
+        assert res.status_code == 200
+        assert calls["count"] == 2

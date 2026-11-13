@@ -21,6 +21,11 @@ export interface MicrocontentSectionItem {
 export interface MicrocontentBody {
   summary?: string;
   sections?: MicrocontentSectionItem[];
+  /**
+   * Explicit metadata key used to select a specialised diagram renderer.
+   * The UI never infers a subject from the title (BL-03).
+   */
+  diagram_key?: string;
   [key: string]: unknown;
 }
 

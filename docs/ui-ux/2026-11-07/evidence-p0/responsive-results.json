@@ -1,0 +1,842 @@
+[
+  {
+    "page": "student-dashboard",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/student-dashboard-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 1970,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -112,
+        "left": -268
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -228,
+        "left": -268
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -238,
+        "left": -258
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -240,
+        "left": -255
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -252,
+        "left": -255
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo DOMINGO, 8 DE NOVIEMBRE Hola, Estudiante No pudimos cargar tu información en este momento. No se pudieron cargar tus datos (No hay una sesión autenticada. Inicia sesión para consultar tus datos.). No se muestran cifras estimadas ni de respaldo. Sin consulta No pudimos consultar tus repasos La consulta falló, por lo que no se asume que no tengas repasos pendientes. Vuelve a intentarlo cuando la conexión esté disponible. Explorar cursos Tu panorama Métricas observadas a partir de tu actividad reg"
+  },
+  {
+    "page": "student-dashboard",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/student-dashboard-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1445,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -108,
+        "left": -264
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -224,
+        "left": -264
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -234,
+        "left": -254
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -236,
+        "left": -251
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -248,
+        "left": -251
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo ESTUDIANTE DOMINGO, 8 DE NOVIEMBRE Hola, Estudiante No pudimos cargar tu información en este momento. No se pudieron cargar tus datos (No hay una sesión autenticada. Inicia sesión para consultar tus datos.). No se muestran cifras estimadas ni de respaldo. Sin consulta No pudimos consultar tus repasos La consulta falló, por lo que no se asume que no tengas repasos pendientes. Vuelve a intentarlo cuando la conexión esté disponible. Explorar cursos Tu panorama Métricas observadas a partir de tu ac"
+  },
+  {
+    "page": "student-dashboard",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/student-dashboard-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 1100,
+    "h1": "Nexo",
+    "overflowing": [],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión ESTUDIANTE DOMINGO, 8 DE NOVIEMBRE Hola, Estudiante No pudimos cargar tu información en este momento. No se pudieron cargar tus datos (No hay una sesión autenticada. Inicia sesión para consultar tus datos.). No se muestran cifras estimadas ni de respaldo. Sin consulta No pudimos consultar tus repasos La consulta falló, por lo que no se asume que no tengas repasos pendientes. Vuelve a intentarlo cuando la conexión esté disponible. Explorar cursos Tu panorama Métricas observadas a partir de tu activid"
+  },
+  {
+    "page": "student-progress",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/student-progress-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 1980,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -112,
+        "left": -268
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -228,
+        "left": -268
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -238,
+        "left": -258
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -240,
+        "left": -255
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -252,
+        "left": -255
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo Mi progreso y retención Telemetría objetiva: precisión observada de tus respuestas y estado de tus componentes de conocimiento. Ver recomendaciones adaptativas No hay una sesión autenticada. Inicia sesión para consultar tus datos. Actividades completadas No disponible Cuestionarios evaluados Precisión observada No disponible Aún no hay respuestas observadas Conceptos consolidados No disponible Umbral configurado: ≥ 80% de precisión Tiempo de microestudio No disponible Lectura activa y repasos E"
+  },
+  {
+    "page": "student-progress",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/student-progress-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1464,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -108,
+        "left": -264
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -224,
+        "left": -264
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -234,
+        "left": -254
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -236,
+        "left": -251
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -248,
+        "left": -251
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo ESTUDIANTE Mi progreso y retención Telemetría objetiva: precisión observada de tus respuestas y estado de tus componentes de conocimiento. Ver recomendaciones adaptativas No hay una sesión autenticada. Inicia sesión para consultar tus datos. Actividades completadas No disponible Cuestionarios evaluados Precisión observada No disponible Aún no hay respuestas observadas Conceptos consolidados No disponible Umbral configurado: ≥ 80% de precisión Tiempo de microestudio No disponible Lectura activa "
+  },
+  {
+    "page": "student-progress",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/student-progress-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 1326,
+    "h1": "Nexo",
+    "overflowing": [],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión ESTUDIANTE Mi progreso y retención Telemetría objetiva: precisión observada de tus respuestas y estado de tus componentes de conocimiento. Ver recomendaciones adaptativas No hay una sesión autenticada. Inicia sesión para consultar tus datos. Actividades completadas No disponible Cuestionarios evaluados Precisión observada No disponible Aún no hay respuestas observadas Conceptos consolidados No disponible Umbral configurado: ≥ 80% de precisión Tiempo de microestudio No disponible Lectura activa y rep"
+  },
+  {
+    "page": "teacher-dashboard",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/teacher-dashboard-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 2418,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -112,
+        "left": -268
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -228,
+        "left": -268
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -238,
+        "left": -258
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -240,
+        "left": -255
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -252,
+        "left": -255
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo PANEL DOCENTE · SEGUIMIENTO PEDAGÓGICO Hola, Docente Supervisa la precisión observada y el estado de consolidación de tus secciones de secundaria. Todas las secciones asignadas No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Estudiantes matriculados No disponible No disponible Cursos asignados No disponible No disponible Precisión observada No disponible No disponible Repasos adaptativos No disponible No disponible Distribución de nivel"
+  },
+  {
+    "page": "teacher-dashboard",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/teacher-dashboard-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1636,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -108,
+        "left": -264
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -224,
+        "left": -264
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -234,
+        "left": -254
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -236,
+        "left": -251
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -248,
+        "left": -251
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo DOCENTE PANEL DOCENTE · SEGUIMIENTO PEDAGÓGICO Hola, Docente Supervisa la precisión observada y el estado de consolidación de tus secciones de secundaria. Todas las secciones asignadas No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Estudiantes matriculados No disponible No disponible Cursos asignados No disponible No disponible Precisión observada No disponible No disponible Repasos adaptativos No disponible No disponible Distribución "
+  },
+  {
+    "page": "teacher-dashboard",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/teacher-dashboard-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 1157,
+    "h1": "Nexo",
+    "overflowing": [],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión DOCENTE PANEL DOCENTE · SEGUIMIENTO PEDAGÓGICO Hola, Docente Supervisa la precisión observada y el estado de consolidación de tus secciones de secundaria. Todas las secciones asignadas No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Estudiantes matriculados No disponible No disponible Cursos asignados No disponible No disponible Precisión observada No disponible No disponible Repasos adaptativos No disponible No disponible Distribución de ni"
+  },
+  {
+    "page": "teacher-reports",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/teacher-reports-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 1868,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -112,
+        "left": -268
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -228,
+        "left": -268
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -238,
+        "left": -258
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -240,
+        "left": -255
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -252,
+        "left": -255
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo SEGUIMIENTO PEDAGÓGICO Reportes: resultados observados Telemetría objetiva de precisión por estudiante, sección y componente de conocimiento. Exportar dataset observado No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Mapa de calor de precisión por componente Visualización matricial de la precisión observada por estudiante y concepto evaluado No se pudo consultar el mapa de calor: la solicitud falló. Precisión observada por componente de"
+  },
+  {
+    "page": "teacher-reports",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/teacher-reports-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1644,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -108,
+        "left": -264
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -224,
+        "left": -264
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -234,
+        "left": -254
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -236,
+        "left": -251
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -248,
+        "left": -251
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo DOCENTE SEGUIMIENTO PEDAGÓGICO Reportes: resultados observados Telemetría objetiva de precisión por estudiante, sección y componente de conocimiento. Exportar dataset observado No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Mapa de calor de precisión por componente Visualización matricial de la precisión observada por estudiante y concepto evaluado No se pudo consultar el mapa de calor: la solicitud falló. Precisión observada por compo"
+  },
+  {
+    "page": "teacher-reports",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/teacher-reports-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 1166,
+    "h1": "Nexo",
+    "overflowing": [],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión DOCENTE SEGUIMIENTO PEDAGÓGICO Reportes: resultados observados Telemetría objetiva de precisión por estudiante, sección y componente de conocimiento. Exportar dataset observado No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Mapa de calor de precisión por componente Visualización matricial de la precisión observada por estudiante y concepto evaluado No se pudo consultar el mapa de calor: la solicitud falló. Precisión observada por componente"
+  },
+  {
+    "page": "teacher-students",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/teacher-students-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 1212,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -112,
+        "left": -268
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -228,
+        "left": -268
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -238,
+        "left": -258
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -240,
+        "left": -255
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -252,
+        "left": -255
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo SEGUIMIENTO DE ESTUDIANTES Nómina y rendimiento de estudiantes Supervisa la precisión observada, el estado de consolidación y las recomendaciones pendientes por estudiante. No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Total en sección — Registros de perfil Consolidados — Precisión ≥ 80% En proceso — Precisión 55% – 79% Refuerzo sugerido — Prioridad de repaso Todas las secciones No se pudo consultar la nómina: la solicitud falló."
+  },
+  {
+    "page": "teacher-students",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/teacher-students-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1024,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -108,
+        "left": -264
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -224,
+        "left": -264
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -234,
+        "left": -254
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -236,
+        "left": -251
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -248,
+        "left": -251
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo DOCENTE SEGUIMIENTO DE ESTUDIANTES Nómina y rendimiento de estudiantes Supervisa la precisión observada, el estado de consolidación y las recomendaciones pendientes por estudiante. No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Total en sección — Registros de perfil Consolidados — Precisión ≥ 80% En proceso — Precisión 55% – 79% Refuerzo sugerido — Prioridad de repaso Todas las secciones No se pudo consultar la nómina: la solicitud fal"
+  },
+  {
+    "page": "teacher-students",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/teacher-students-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 900,
+    "h1": "Nexo",
+    "overflowing": [],
+    "bodyText": "Nexo Aprende a tu ritmo GESTIÓN DOCENTE DOCENTE Dashboard Cursos Cuestionarios Banco de preguntas Estudiantes Reportes Estados del sistema U Usuario Docente · Sin código Sesión institucional 5.° Secundaria Cerrar sesión DOCENTE SEGUIMIENTO DE ESTUDIANTES Nómina y rendimiento de estudiantes Supervisa la precisión observada, el estado de consolidación y las recomendaciones pendientes por estudiante. No hay una sesión autenticada. Inicia sesión para consultar la telemetría docente. Total en sección — Registros de perfil Consolidados — Precisión ≥ 80% En proceso — Precisión 55% – 79% Refuerzo sugerido — Prioridad de repaso Todas las secciones No se pudo consultar la nómina: la solicitud falló."
+  },
+  {
+    "page": "system-status",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/system-status-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 1633,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -112,
+        "left": -268
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -228,
+        "left": -268
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -238,
+        "left": -258
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -240,
+        "left": -255
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -252,
+        "left": -255
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo TELEMETRÍA & ARQUITECTURA Estado del sistema Estado medido del servicio de inferencia y verificación explícita de los controles de seguridad. Verificar ahora Servicio de inferencia no disponible Última verificación: 8 nov. 2026, 1:15:29 a. m. (America/Lima) API: sin conexión La fecha y hora de verificación corresponden al último intento de consulta desde este navegador. Si la consulta falla, no se muestra una latencia estimada. Sin conexión blitz.cloud API Contenedor Linux/amd64 Latencia medida"
+  },
+  {
+    "page": "system-status",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/system-status-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1031,
+    "h1": "Nexo",
+    "overflowing": [
+      {
+        "tag": "ASIDE",
+        "cls": "bg-[#0B2D34] text-white flex flex-col justify-between border-r border-[#123E45] z-40 fixed",
+        "right": 0,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "p-5 sm:p-6 flex items-center justify-between border-b border-[#123E45]/80",
+        "right": -1,
+        "left": -288
+      },
+      {
+        "tag": "DIV",
+        "cls": "flex items-center gap-3",
+        "right": -108,
+        "left": -264
+      },
+      {
+        "tag": "DIV",
+        "cls": "h-10 w-10 rounded-xl bg-[#69D7C9] text-[#0B2D34] flex items-center justify-center shadow-m",
+        "right": -224,
+        "left": -264
+      },
+      {
+        "tag": "svg",
+        "cls": "",
+        "right": -234,
+        "left": -254
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -236,
+        "left": -251
+      },
+      {
+        "tag": "path",
+        "cls": "",
+        "right": -248,
+        "left": -251
+      }
+    ],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión Nexo ESTUDIANTE TELEMETRÍA & ARQUITECTURA Estado del sistema Estado medido del servicio de inferencia y verificación explícita de los controles de seguridad. Verificar ahora Servicio de inferencia no disponible Última verificación: 8 nov. 2026, 1:15:31 a. m. (America/Lima) API: sin conexión La fecha y hora de verificación corresponden al último intento de consulta desde este navegador. Si la consulta falla, no se muestra una latencia estimada. Sin conexión blitz.cloud API Contenedor Linux/amd64 Late"
+  },
+  {
+    "page": "system-status",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/system-status-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 900,
+    "h1": "Nexo",
+    "overflowing": [],
+    "bodyText": "Nexo Aprende a tu ritmo MI ESPACIO ALUMNO Inicio Mis cursos Recomendaciones Mi progreso Estados del sistema U Usuario 5.° Secundaria · Sin código Sesión institucional 5.° Secundaria Cerrar sesión ESTUDIANTE TELEMETRÍA & ARQUITECTURA Estado del sistema Estado medido del servicio de inferencia y verificación explícita de los controles de seguridad. Verificar ahora Servicio de inferencia no disponible Última verificación: 8 nov. 2026, 1:15:34 a. m. (America/Lima) API: sin conexión La fecha y hora de verificación corresponden al último intento de consulta desde este navegador. Si la consulta falla, no se muestra una latencia estimada. Sin conexión blitz.cloud API Contenedor Linux/amd64 Latencia "
+  },
+  {
+    "page": "recovery",
+    "viewport": "390",
+    "file": "/tmp/opencode/responsive/recovery-390.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "scrollHeight": 1080,
+    "h1": "Recuperar acceso",
+    "overflowing": [],
+    "bodyText": "Volver a iniciar sesión Recuperar acceso Esta pantalla no restablece contraseñas automáticamente. Para proteger tu cuenta, el cambio de acceso se coordina con tu institución educativa. Restablecimiento automático no disponible La plataforma todavía no expone un flujo verificado de recuperación por correo o PIN. Esta pantalla no envía mensajes ni simula cambios de contraseña. 1. Contacta a tu docente o coordinación Escribe por el canal institucional que ya utilizas con tu institución educativa. 2. Verifica tu identidad La persona responsable confirmará tu identidad con los datos de matrícula antes de ayudarte. 3. Recibe indicaciones Cuando el restablecimiento esté habilitado para tu cuenta, c"
+  },
+  {
+    "page": "recovery",
+    "viewport": "768",
+    "file": "/tmp/opencode/responsive/recovery-768.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 768,
+    "innerWidth": 768,
+    "scrollHeight": 1024,
+    "h1": "Recuperar acceso",
+    "overflowing": [],
+    "bodyText": "Volver a iniciar sesión Recuperar acceso Esta pantalla no restablece contraseñas automáticamente. Para proteger tu cuenta, el cambio de acceso se coordina con tu institución educativa. Restablecimiento automático no disponible La plataforma todavía no expone un flujo verificado de recuperación por correo o PIN. Esta pantalla no envía mensajes ni simula cambios de contraseña. 1. Contacta a tu docente o coordinación Escribe por el canal institucional que ya utilizas con tu institución educativa. 2. Verifica tu identidad La persona responsable confirmará tu identidad con los datos de matrícula antes de ayudarte. 3. Recibe indicaciones Cuando el restablecimiento esté habilitado para tu cuenta, c"
+  },
+  {
+    "page": "recovery",
+    "viewport": "1440",
+    "file": "/tmp/opencode/responsive/recovery-1440.png",
+    "horizontalOverflow": false,
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "scrollHeight": 902,
+    "h1": "Recuperar acceso",
+    "overflowing": [],
+    "bodyText": "Volver a iniciar sesión Recuperar acceso Esta pantalla no restablece contraseñas automáticamente. Para proteger tu cuenta, el cambio de acceso se coordina con tu institución educativa. Restablecimiento automático no disponible La plataforma todavía no expone un flujo verificado de recuperación por correo o PIN. Esta pantalla no envía mensajes ni simula cambios de contraseña. 1. Contacta a tu docente o coordinación Escribe por el canal institucional que ya utilizas con tu institución educativa. 2. Verifica tu identidad La persona responsable confirmará tu identidad con los datos de matrícula antes de ayudarte. 3. Recibe indicaciones Cuando el restablecimiento esté habilitado para tu cuenta, c"
+  }
+]

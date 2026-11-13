@@ -1,105 +1,137 @@
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  decideRoute,
+  normalizeRole,
+  type AppRole,
+} from "@/lib/auth/authorization";
 
-export function middleware(req: NextRequest) {
+const DEFAULT_SUPABASE_URL = "https://oqjahhbqcethwgpufgnm.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_u5AIwepBNqqKzQPxVtg5QQ_d_IQ3yrX";
+
+function supabaseUrl(): string {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+}
+
+function supabaseAnonKey(): string {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    DEFAULT_SUPABASE_ANON_KEY
+  );
+}
+
+/**
+ * Fast path: without a Supabase auth cookie there is no session to verify.
+ * Cookie *presence* is not an authorization signal; it only avoids a network
+ * round-trip when there is provably nothing to validate.
+ */
+function hasSupabaseAuthCookie(req: NextRequest): boolean {
+  return req.cookies
+    .getAll()
+    .some((cookie) => cookie.name.includes("-auth-token"));
+}
+
+function copyCookies(target: NextResponse, source: NextResponse): void {
+  source.cookies.getAll().forEach((cookie) => target.cookies.set(cookie));
+}
+
+/**
+ * Resolves the role from a cryptographically verified Supabase session.
+ *
+ * 1. `auth.getUser()` validates the JWT against Supabase Auth (never the
+ *    local-only session accessor, which merely decodes the cookie).
+ * 2. The role is read from `public.profiles` under the user's own RLS
+ *    context. Client-controlled metadata, `nexo_*` cookies and request
+ *    headers are never consulted.
+ */
+async function resolveVerifiedRole(
+  req: NextRequest,
+  response: NextResponse
+): Promise<AppRole | null> {
+  if (!hasSupabaseAuthCookie(req)) return null;
+
+  const supabase = createServerClient(supabaseUrl(), supabaseAnonKey(), {
+    cookies: {
+      get(name: string) {
+        return req.cookies.get(name)?.value;
+      },
+      set(name: string, value: string, options: CookieOptions) {
+        req.cookies.set({ name, value, ...options });
+        response.cookies.set({ name, value, ...options });
+      },
+      remove(name: string, options: CookieOptions) {
+        req.cookies.set({ name, value: "", ...options });
+        response.cookies.set({ name, value: "", ...options });
+      },
+    },
+  });
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) return null;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError || !profile) return null;
+
+  return normalizeRole(profile.role);
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Bypass static resources and internal Next.js paths
+  // 1. Bypass static resources and internal Next.js paths.
+  //    `/api/*` is intentionally excluded here; FastAPI/Route Handlers perform
+  //    their own JWT validation and must not be protected by UI redirects.
+  const isStaticAsset =
+    /\.(?:avif|css|gif|ico|jpe?g|js|json|map|mjs|otf|png|svg|ttf|txt|webmanifest|webp|woff2?|xml)$/i.test(
+      pathname
+    );
+
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
-    pathname.includes(".") ||
+    isStaticAsset ||
     pathname === "/favicon.ico"
   ) {
     return NextResponse.next();
   }
 
-  // 2. Read session & role cookies
-  const sessionToken = req.cookies.get("nexo_session")?.value;
-  const role = req.cookies.get("nexo_role")?.value;
+  // Response that carries any refreshed Supabase auth cookies.
+  const response = NextResponse.next({ request: req });
+  const role = await resolveVerifiedRole(req, response);
+  const decision = decideRoute(role, pathname);
 
-  const isAuthenticated = Boolean(
-    sessionToken && (role === "student" || role === "teacher")
-  );
+  switch (decision.kind) {
+    case "public":
+    case "allow":
+      return response;
 
-  // 3. Define public routes
-  const isAuthRoute =
-    pathname === "/login" ||
-    pathname.startsWith("/login/") ||
-    pathname === "/recovery" ||
-    pathname.startsWith("/recovery/");
-
-  // 4. Root "/" redirection
-  if (pathname === "/") {
-    if (isAuthenticated) {
-      const target = role === "teacher" ? "/teacher/dashboard" : "/dashboard";
-      return NextResponse.redirect(new URL(target, req.url));
+    case "redirect": {
+      const redirectResponse = NextResponse.redirect(
+        new URL(decision.destination, req.url)
+      );
+      copyCookies(redirectResponse, response);
+      return redirectResponse;
     }
-    return NextResponse.redirect(new URL("/login", req.url));
+
+    case "deny": {
+      const forbidden = new NextResponse("Forbidden", {
+        status: decision.status,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+      copyCookies(forbidden, response);
+      return forbidden;
+    }
   }
-
-  // 5. If already authenticated and trying to visit login/recovery, forward to role dashboard
-  if (isAuthRoute) {
-    if (isAuthenticated) {
-      const target = role === "teacher" ? "/teacher/dashboard" : "/dashboard";
-      return NextResponse.redirect(new URL(target, req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // 6. Teacher protected routes (/teacher/*)
-  if (pathname.startsWith("/teacher")) {
-    if (!isAuthenticated) {
-      const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    // Role privilege check: Students CANNOT access teacher dashboard
-    if (role !== "teacher") {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-
-    return NextResponse.next();
-  }
-
-  // 7. Student learning routes (/dashboard, /courses, /progress, /learn, /quiz, /recommendations)
-  const isStudentRoute =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/courses") ||
-    pathname.startsWith("/progress") ||
-    pathname.startsWith("/learn") ||
-    pathname.startsWith("/quiz") ||
-    pathname.startsWith("/recommendations");
-
-  if (isStudentRoute) {
-    if (!isAuthenticated) {
-      const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    // Role privilege check: Teachers stay in their management area
-    if (role !== "student") {
-      return NextResponse.redirect(new URL("/teacher/dashboard", req.url));
-    }
-
-    return NextResponse.next();
-  }
-
-  // 8. Shared authenticated route (/system-status)
-  if (pathname.startsWith("/system-status")) {
-    if (!isAuthenticated) {
-      return NextResponse.redirect(new URL("/login", req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // Fallback for any other route
-  if (!isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {

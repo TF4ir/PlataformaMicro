@@ -63,8 +63,7 @@ export function Sidebar() {
       : "DO";
   const currentDetail =
     effectiveRole === "student" ? "5.° Secundaria" : "Docente";
-  const currentCode =
-    currentUser?.code || (effectiveRole === "student" ? "EST-501" : "DOC-101");
+  const currentCode = currentUser?.code || "Sin código";
 
   return (
     <>

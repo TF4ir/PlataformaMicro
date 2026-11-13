@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useRole } from "@/lib/role-context";
+import { normalizeRole, portalRoleFor } from "@/lib/auth/authorization";
 import { UserRole } from "@/types/ui";
 import { cn } from "@/lib/utils";
 import { SolarSystemOrbit } from "@/components/auth/solar-system-orbit";
@@ -79,65 +80,6 @@ function LoginFormContent() {
         });
 
       if (authError) {
-        // Fallback verification for demo institutional accounts (strictly guarded)
-        if (isDemoAllowed) {
-          const isStudentMatch =
-            (cleanIdentifier.includes("lucia") ||
-              cleanIdentifier.includes("est-501")) &&
-            password === "Nexo2026!";
-
-          const isTeacherMatch =
-            (cleanIdentifier.includes("ana") ||
-              cleanIdentifier.includes("doc-101")) &&
-            password === "Nexo2026!";
-
-          if (isStudentMatch) {
-            if (selectedRole !== "student") {
-              setErrorMessage(
-                "Esta cuenta corresponde a una Estudiante. Por favor, selecciona la tarjeta 'Estudiante' para acceder."
-              );
-              setIsLoading(false);
-              return;
-            }
-
-            login(
-              "student",
-              {
-                id: "e0000000-0000-0000-0000-000000000001",
-                name: "Lucía Mendoza",
-                email: "lucia.mendoza@nexo.edu.pe",
-                role: "student",
-                code: "EST-501",
-              },
-              redirectParam
-            );
-            return;
-          }
-
-          if (isTeacherMatch) {
-            if (selectedRole !== "teacher") {
-              setErrorMessage(
-                "Esta cuenta corresponde a una Docente. Por favor, selecciona la tarjeta 'Docente' para acceder."
-              );
-              setIsLoading(false);
-              return;
-            }
-
-            login(
-              "teacher",
-              {
-                id: "d0000000-0000-0000-0000-000000000001",
-                name: "Dra. Ana García",
-                email: "ana.garcia@nexo.edu.pe",
-                role: "teacher",
-                code: "DOC-101",
-              },
-              redirectParam
-            );
-            return;
-          }
-        }
-
         setErrorMessage(
           authError.message === "Invalid login credentials"
             ? "Credenciales incorrectas. Verifica tu correo institucional y contraseña."
@@ -147,14 +89,25 @@ function LoginFormContent() {
         return;
       }
 
-      // Supabase authenticated successfully: verify role privileges in profiles table
-      const { data: profile } = await supabase
+      // Supabase authenticated successfully. The role MUST come from the
+      // authoritative profiles table, never from client metadata/cookies.
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("id, full_name, role, student_code")
         .eq("id", authData.user.id)
-        .single();
+        .maybeSingle();
 
-      const userRole = (profile?.role as UserRole) || "student";
+      const verifiedRole = normalizeRole(profile?.role);
+      const userRole = portalRoleFor(verifiedRole);
+
+      if (profileError || !profile || !verifiedRole || !userRole) {
+        await supabase.auth.signOut();
+        setErrorMessage(
+          "Tu cuenta no tiene un perfil institucional habilitado. Contacta a coordinación para regularizar tu acceso."
+        );
+        setIsLoading(false);
+        return;
+      }
 
       // Privilege check: ensure user logged into the matching portal
       if (userRole !== selectedRole) {
@@ -171,15 +124,12 @@ function LoginFormContent() {
       }
 
       login(
-        userRole,
         {
-          id: profile?.id || authData.user.id,
-          name: profile?.full_name || "Usuario Nexo",
+          id: profile.id,
+          name: profile.full_name || "Usuario Nexo",
           email: authData.user.email || "",
           role: userRole,
-          code:
-            profile?.student_code ||
-            (userRole === "teacher" ? "DOC-101" : "EST-501"),
+          code: profile.student_code || undefined,
         },
         redirectParam
       );
