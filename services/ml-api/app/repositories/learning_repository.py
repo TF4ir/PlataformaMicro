@@ -1,6 +1,8 @@
 """PostgreSQL Repository for Student Learning Flow, Attempts, and Immutable Answer Events (Milestone M4)."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -45,13 +47,26 @@ class LearningRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self.pool = pool
 
+    @asynccontextmanager
+    async def _connection_scope(
+        self,
+        conn: asyncpg.Connection | None = None,
+    ) -> AsyncIterator[asyncpg.Connection]:
+        """Provide existing connection or acquire a leased connection from the pool."""
+        if conn is not None:
+            yield conn
+        else:
+            async with self.pool.acquire() as acquired_conn:
+                yield acquired_conn
+
     async def list_student_courses(
         self,
         tenant_id: UUID,
         student_id: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> list[StudentCourseItem]:
         """Fetch courses and assigned sections for the authenticated student."""
-        async with self.pool.acquire() as conn:
+        async with self._connection_scope(conn) as active_conn:
             query = """
             SELECT DISTINCT c.id AS course_id, c.code AS course_code,
                    c.name AS course_name, c.description,
@@ -62,7 +77,7 @@ class LearningRepository:
             WHERE e.tenant_id = $1 AND e.student_id = $2 AND c.is_active = true
             ORDER BY c.name ASC;
             """
-            rows = await conn.fetch(query, tenant_id, student_id)
+            rows = await active_conn.fetch(query, tenant_id, student_id)
             return [
                 StudentCourseItem(
                     course_id=r["course_id"],
@@ -79,9 +94,10 @@ class LearningRepository:
         self,
         tenant_id: UUID,
         student_id: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> list[StudentActivityListItem]:
         """List published activities for the student's enrolled sections."""
-        async with self.pool.acquire() as conn:
+        async with self._connection_scope(conn) as active_conn:
             query = """
             SELECT a.id AS activity_id, a.title, a.description, a.course_id,
                    c.name AS course_name, s.id AS section_id, s.name AS section_name,
@@ -116,7 +132,7 @@ class LearningRepository:
             GROUP BY a.id, c.name, s.id, s.name
             ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC;
             """
-            rows = await conn.fetch(query, tenant_id, student_id)
+            rows = await active_conn.fetch(query, tenant_id, student_id)
 
             now = datetime.now(UTC)
             results: list[StudentActivityListItem] = []
@@ -167,11 +183,12 @@ class LearningRepository:
         tenant_id: UUID,
         student_id: UUID,
         activity_id: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> StudentActivityDetail:
         """Fetch sanitized activity detail and questions for student (no answers or explanations)."""
-        async with self.pool.acquire() as conn:
+        async with self._connection_scope(conn) as active_conn:
             # Verify enrollment in an assigned section
-            act_row = await conn.fetchrow(
+            act_row = await active_conn.fetchrow(
                 """
                 SELECT a.id, a.title, a.description, a.course_id, c.name AS course_name,
                        a.activity_type::text, a.feedback_policy::text,
@@ -193,7 +210,7 @@ class LearningRepository:
                 raise PermissionError(f"Activity {activity_id} is not currently published.")
 
             # Check for active in_progress attempt
-            active_attempt = await conn.fetchval(
+            active_attempt = await active_conn.fetchval(
                 """
                 SELECT id FROM quiz_attempts
                 WHERE activity_id = $1 AND student_id = $2 AND status = 'in_progress'
@@ -204,7 +221,7 @@ class LearningRepository:
             )
 
             # Fetch sanitized questions
-            q_rows = await conn.fetch(
+            q_rows = await active_conn.fetch(
                 """
                 SELECT aq.order_index, q.id, q.question_text, q.question_type
                 FROM activity_questions aq
@@ -219,7 +236,7 @@ class LearningRepository:
             for qr in q_rows:
                 q_id = qr["id"]
                 # Options: id, option_text, order_index ONLY
-                opt_rows = await conn.fetch(
+                opt_rows = await active_conn.fetch(
                     """
                     SELECT id, option_text, order_index
                     FROM question_options
@@ -281,7 +298,7 @@ class LearningRepository:
                     idempotency_key,
                 )
                 if existing_by_key:
-                    questions = (await self.get_student_activity_detail(tenant_id, student_id, activity_id)).questions
+                    questions = (await self.get_student_activity_detail(tenant_id, student_id, activity_id, conn=conn)).questions
                     return StartAttemptResponse(
                         attempt_id=existing_by_key["id"],
                         activity_id=activity_id,
@@ -329,7 +346,7 @@ class LearningRepository:
                 student_id,
             )
             if existing_active:
-                questions = (await self.get_student_activity_detail(tenant_id, student_id, activity_id)).questions
+                questions = (await self.get_student_activity_detail(tenant_id, student_id, activity_id, conn=conn)).questions
                 return StartAttemptResponse(
                     attempt_id=existing_active["id"],
                     activity_id=activity_id,
@@ -354,23 +371,24 @@ class LearningRepository:
             key_to_use = idempotency_key or uuid4()
 
             try:
-                attempt_row = await conn.fetchrow(
-                    """
-                    INSERT INTO quiz_attempts (
-                        tenant_id, enrollment_id, activity_id, student_id,
-                        attempt_number, status, idempotency_key, started_at
-                    ) VALUES (
-                        $1, $2, $3, $4, $5, 'in_progress'::attempt_status_enum, $6, now()
+                async with conn.transaction():
+                    attempt_row = await conn.fetchrow(
+                        """
+                        INSERT INTO quiz_attempts (
+                            tenant_id, enrollment_id, activity_id, student_id,
+                            attempt_number, status, idempotency_key, started_at
+                        ) VALUES (
+                            $1, $2, $3, $4, $5, 'in_progress'::attempt_status_enum, $6, now()
+                        )
+                        RETURNING id, started_at;
+                        """,
+                        tenant_id,
+                        enrollment_row["enrollment_id"],
+                        activity_id,
+                        student_id,
+                        attempt_number,
+                        key_to_use,
                     )
-                    RETURNING id, started_at;
-                    """,
-                    tenant_id,
-                    enrollment_row["enrollment_id"],
-                    activity_id,
-                    student_id,
-                    attempt_number,
-                    key_to_use,
-                )
                 attempt_id_ret = attempt_row["id"]
                 started_at_ret = attempt_row["started_at"]
                 ret_status = AttemptStatus.IN_PROGRESS
@@ -394,7 +412,7 @@ class LearningRepository:
                 else:
                     raise
 
-            questions = (await self.get_student_activity_detail(tenant_id, student_id, activity_id)).questions
+            questions = (await self.get_student_activity_detail(tenant_id, student_id, activity_id, conn=conn)).questions
             return StartAttemptResponse(
                 attempt_id=attempt_id_ret,
                 activity_id=activity_id,
@@ -525,38 +543,39 @@ class LearningRepository:
             )
 
             try:
-                event_row = await conn.fetchrow(
-                    """
-                    INSERT INTO answer_events (
-                        tenant_id, attempt_id, student_id, question_id,
-                        knowledge_component_id, selected_option_id, is_correct,
-                        attempt_number, response_time_seconds, response_time_ms,
-                        idempotency_key, activity_id, course_id, question_sequence,
-                        event_timestamp
-                    ) VALUES (
-                        $1, $2, $3, $4,
-                        $5, $6, $7,
-                        $8, $9, $10,
-                        $11, $12, $13, $14,
-                        now()
+                async with conn.transaction():
+                    event_row = await conn.fetchrow(
+                        """
+                        INSERT INTO answer_events (
+                            tenant_id, attempt_id, student_id, question_id,
+                            knowledge_component_id, selected_option_id, is_correct,
+                            attempt_number, response_time_seconds, response_time_ms,
+                            idempotency_key, activity_id, course_id, question_sequence,
+                            event_timestamp
+                        ) VALUES (
+                            $1, $2, $3, $4,
+                            $5, $6, $7,
+                            $8, $9, $10,
+                            $11, $12, $13, $14,
+                            now()
+                        )
+                        RETURNING id;
+                        """,
+                        tenant_id,
+                        attempt_id,
+                        student_id,
+                        payload.question_id,
+                        kc_id,
+                        payload.selected_option_id,
+                        is_correct,
+                        attempt_number,
+                        payload.response_time_seconds,
+                        response_ms,
+                        effective_key,
+                        activity_id,
+                        course_id,
+                        seq_val,
                     )
-                    RETURNING id;
-                    """,
-                    tenant_id,
-                    attempt_id,
-                    student_id,
-                    payload.question_id,
-                    kc_id,
-                    payload.selected_option_id,
-                    is_correct,
-                    attempt_number,
-                    payload.response_time_seconds,
-                    response_ms,
-                    effective_key,
-                    activity_id,
-                    course_id,
-                    seq_val,
-                )
                 event_id = event_row["id"]
             except asyncpg.UniqueViolationError:
                 existing = await conn.fetchrow(
@@ -841,15 +860,179 @@ class LearningRepository:
                 kc_summaries=kc_summaries,
             )
 
+    async def _fetch_student_analytics(
+        self,
+        tenant_id: UUID,
+        student_id: UUID,
+        conn: asyncpg.Connection | None = None,
+        *,
+        total_concepts_count: int | None = None,
+        completed_activities_count: int | None = None,
+    ) -> StudentAnalyticsSummary:
+        """Fetch aggregate student analytics in a single database round-trip (shared across dashboard and progress views)."""
+        async with self._connection_scope(conn) as active_conn:
+            tot_kcs = total_concepts_count
+            comp_acts_tot = completed_activities_count
+
+            # If course-scoped metrics are precomputed (as in get_student_dashboard),
+            # we run a single consolidated CTE query for answers, exposures, and consolidated/reviewed KCs.
+            if tot_kcs is not None and comp_acts_tot is not None:
+                row = await active_conn.fetchrow(
+                    """
+                    WITH ans AS (
+                        SELECT
+                            COUNT(id)::int AS total_ans,
+                            COUNT(id) FILTER (WHERE is_correct = true)::int AS correct_ans
+                        FROM answer_events
+                        WHERE student_id = $1 AND tenant_id = $2
+                    ),
+                    exp AS (
+                        SELECT COALESCE(SUM(duration_seconds), 0.0)::float AS exp_duration
+                        FROM content_exposure_events
+                        WHERE student_id = $1 AND tenant_id = $2
+                          AND event_timestamp >= now() - interval '7 days'
+                    ),
+                    cons AS (
+                        SELECT COUNT(*)::int AS cons_count FROM (
+                            SELECT knowledge_component_id
+                            FROM answer_events
+                            WHERE student_id = $1 AND tenant_id = $2
+                            GROUP BY knowledge_component_id
+                            HAVING (COUNT(id) FILTER (WHERE is_correct = true)::float / COUNT(id)::float) >= 0.80
+                        ) sub
+                    ),
+                    rev AS (
+                        SELECT COUNT(DISTINCT kc_id)::int AS rev_count FROM (
+                            SELECT knowledge_component_id AS kc_id
+                            FROM content_exposure_events
+                            WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
+                            UNION
+                            SELECT knowledge_component_id AS kc_id
+                            FROM answer_events
+                            WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
+                        ) u_kc
+                    )
+                    SELECT
+                        ans.total_ans,
+                        ans.correct_ans,
+                        exp.exp_duration,
+                        cons.cons_count,
+                        rev.rev_count
+                    FROM ans, exp, cons, rev;
+                    """,
+                    student_id,
+                    tenant_id,
+                )
+            else:
+                # When called standalone (as in get_student_progress), also resolve course-scoped
+                # aggregates in the same single CTE query without loading full course/unit structures.
+                row = await active_conn.fetchrow(
+                    """
+                    WITH ans AS (
+                        SELECT
+                            COUNT(id)::int AS total_ans,
+                            COUNT(id) FILTER (WHERE is_correct = true)::int AS correct_ans
+                        FROM answer_events
+                        WHERE student_id = $1 AND tenant_id = $2
+                    ),
+                    exp AS (
+                        SELECT COALESCE(SUM(duration_seconds), 0.0)::float AS exp_duration
+                        FROM content_exposure_events
+                        WHERE student_id = $1 AND tenant_id = $2
+                          AND event_timestamp >= now() - interval '7 days'
+                    ),
+                    cons AS (
+                        SELECT COUNT(*)::int AS cons_count FROM (
+                            SELECT knowledge_component_id
+                            FROM answer_events
+                            WHERE student_id = $1 AND tenant_id = $2
+                            GROUP BY knowledge_component_id
+                            HAVING (COUNT(id) FILTER (WHERE is_correct = true)::float / COUNT(id)::float) >= 0.80
+                        ) sub
+                    ),
+                    rev AS (
+                        SELECT COUNT(DISTINCT kc_id)::int AS rev_count FROM (
+                            SELECT knowledge_component_id AS kc_id
+                            FROM content_exposure_events
+                            WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
+                            UNION
+                            SELECT knowledge_component_id AS kc_id
+                            FROM answer_events
+                            WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
+                        ) u_kc
+                    ),
+                    course_s AS (
+                        SELECT
+                            COALESCE(SUM(sub.kcs_count), 0)::int AS total_kcs,
+                            COALESCE(SUM(sub.completed_acts), 0)::int AS completed_acts
+                        FROM (
+                            SELECT
+                                (
+                                    SELECT COUNT(kc.id)::int
+                                    FROM knowledge_components kc
+                                    JOIN units u ON kc.unit_id = u.id
+                                    WHERE u.course_id = c.id
+                                ) AS kcs_count,
+                                (
+                                    SELECT COUNT(DISTINCT qa.activity_id)::int
+                                    FROM quiz_attempts qa
+                                    JOIN activities a ON qa.activity_id = a.id
+                                    JOIN enrollments e2 ON qa.enrollment_id = e2.id
+                                    WHERE e2.student_id = $1 AND qa.status = 'completed' AND a.course_id = c.id
+                                ) AS completed_acts
+                            FROM enrollments e
+                            JOIN sections s ON s.id = e.section_id
+                            JOIN courses c ON c.id = s.course_id
+                            WHERE e.student_id = $1 AND e.tenant_id = $2 AND c.is_active = true
+                        ) sub
+                    )
+                    SELECT
+                        ans.total_ans,
+                        ans.correct_ans,
+                        exp.exp_duration,
+                        cons.cons_count,
+                        rev.rev_count,
+                        course_s.total_kcs,
+                        course_s.completed_acts
+                    FROM ans, exp, cons, rev, course_s;
+                    """,
+                    student_id,
+                    tenant_id,
+                )
+                if tot_kcs is None and row:
+                    tot_kcs = row["total_kcs"]
+                if comp_acts_tot is None and row:
+                    comp_acts_tot = row["completed_acts"]
+
+            tot_ans = row["total_ans"] if row else 0
+            cor_ans = row["correct_ans"] if row else 0
+            obs_acc = round((cor_ans / tot_ans) * 100.0, 1) if tot_ans > 0 else 0.0
+            weekly_mins = int((row["exp_duration"] if row else 0.0) // 60)
+            cons_kcs_count = row["cons_count"] if row else 0
+            rev_kcs_count = row["rev_count"] if row else 0
+            tot_kcs = tot_kcs or 0
+            comp_acts_tot = comp_acts_tot or 0
+
+            return StudentAnalyticsSummary(
+                weekly_learning_minutes=weekly_mins,
+                completed_activities_count=comp_acts_tot,
+                total_answers=tot_ans,
+                observed_accuracy_percentage=obs_acc,
+                reviewed_concepts_count=rev_kcs_count,
+                consolidated_concepts_count=cons_kcs_count,
+                total_concepts_count=tot_kcs,
+            )
+
     async def get_student_dashboard(
         self,
         tenant_id: UUID,
         student_id: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> StudentDashboardResponse:
         """Fetch unified student dashboard payload with enrolled courses, analytics, recommendations, and recent activities."""
-        async with self.pool.acquire() as conn:
+        async with self._connection_scope(conn) as active_conn:
             # 1. Student profile
-            prof = await conn.fetchrow(
+            prof = await active_conn.fetchrow(
                 "SELECT full_name, student_code FROM profiles WHERE id = $1 AND tenant_id = $2",
                 student_id,
                 tenant_id,
@@ -858,9 +1041,9 @@ class LearningRepository:
             s_code = prof["student_code"] if prof else None
 
             # 2. Enrolled courses with enriched metrics
-            c_rows = await conn.fetch(
+            c_rows = await active_conn.fetch(
                 """
-                SELECT 
+                SELECT
                     c.id AS course_id, c.code AS course_code, c.name AS course_name, c.description,
                     s.id AS section_id, s.name AS section_name,
                     (SELECT COUNT(*)::int FROM units WHERE course_id = c.id) AS units_count,
@@ -913,87 +1096,22 @@ class LearningRepository:
                     )
                 )
 
-            # 3. Objective Analytics (answers, accuracy, study minutes)
-            stats = await conn.fetchrow(
-                """
-                SELECT 
-                    COUNT(id)::int AS total_ans,
-                    COUNT(id) FILTER (WHERE is_correct = true)::int AS correct_ans
-                FROM answer_events
-                WHERE student_id = $1 AND tenant_id = $2
-                """,
-                student_id,
-                tenant_id,
-            )
-            tot_ans = stats["total_ans"] if stats else 0
-            cor_ans = stats["correct_ans"] if stats else 0
-            obs_acc = round((cor_ans / tot_ans) * 100.0, 1) if tot_ans > 0 else 0.0
-
-            # Learning minutes (last 7 days from content_exposure_events)
-            exp_duration = await conn.fetchval(
-                """
-                SELECT COALESCE(SUM(duration_seconds), 0.0)::float
-                FROM content_exposure_events
-                WHERE student_id = $1 AND tenant_id = $2
-                  AND event_timestamp >= now() - interval '7 days'
-                """,
-                student_id,
-                tenant_id,
-            ) or 0.0
-            weekly_mins = int(exp_duration // 60)
-
-            # Total concepts count in student's enrolled courses
             tot_kcs = sum(c.kcs_count for c in enrolled_courses)
-
-            # Consolidated concepts count (observed accuracy >= 80% on that KC)
-            cons_kcs_count = await conn.fetchval(
-                """
-                SELECT COUNT(*)::int FROM (
-                    SELECT knowledge_component_id
-                    FROM answer_events
-                    WHERE student_id = $1 AND tenant_id = $2
-                    GROUP BY knowledge_component_id
-                    HAVING (COUNT(id) FILTER (WHERE is_correct = true)::float / COUNT(id)::float) >= 0.80
-                ) sub
-                """,
-                student_id,
-                tenant_id,
-            ) or 0
-
-            # Concepts reviewed in last 7 days
-            rev_kcs_count = await conn.fetchval(
-                """
-                SELECT COUNT(DISTINCT kc_id)::int FROM (
-                    SELECT knowledge_component_id AS kc_id
-                    FROM content_exposure_events
-                    WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
-                    UNION
-                    SELECT knowledge_component_id AS kc_id
-                    FROM answer_events
-                    WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp >= now() - interval '7 days'
-                ) u_kc
-                """,
-                student_id,
-                tenant_id,
-            ) or 0
-
-            # Completed activities count
             comp_acts_tot = sum(c.completed_activities_count for c in enrolled_courses)
 
-            analytics = StudentAnalyticsSummary(
-                weekly_learning_minutes=weekly_mins,
-                completed_activities_count=comp_acts_tot,
-                total_answers=tot_ans,
-                observed_accuracy_percentage=obs_acc,
-                reviewed_concepts_count=rev_kcs_count,
-                consolidated_concepts_count=cons_kcs_count,
+            # 3. Objective Analytics (reusing active_conn and helper)
+            analytics = await self._fetch_student_analytics(
+                tenant_id=tenant_id,
+                student_id=student_id,
+                conn=active_conn,
                 total_concepts_count=tot_kcs,
+                completed_activities_count=comp_acts_tot,
             )
 
             # 4. Upcoming Spaced Repetition Reviews (Pending recommendations)
-            rec_rows = await conn.fetch(
+            rec_rows = await active_conn.fetch(
                 """
-                SELECT 
+                SELECT
                     r.id AS rec_id,
                     r.knowledge_component_id,
                     kc.name AS kc_name,
@@ -1026,8 +1144,12 @@ class LearningRepository:
                 for r in rec_rows
             ]
 
-            # 5. Recent activities
-            recent_acts = await self.list_student_activities(tenant_id=tenant_id, student_id=student_id)
+            # 5. Recent activities (passing active_conn to prevent nested pool acquisition)
+            recent_acts = await self.list_student_activities(
+                tenant_id=tenant_id,
+                student_id=student_id,
+                conn=active_conn,
+            )
 
             return StudentDashboardResponse(
                 student_name=s_name,
@@ -1042,14 +1164,21 @@ class LearningRepository:
         self,
         tenant_id: UUID,
         student_id: UUID,
+        conn: asyncpg.Connection | None = None,
     ) -> StudentProgressDetailResponse:
         """Fetch detailed student progress separating observed quiz performance from retention estimates."""
-        dashboard = await self.get_student_dashboard(tenant_id=tenant_id, student_id=student_id)
-        async with self.pool.acquire() as conn:
-            # 1. Score evolution
-            evo_rows = await conn.fetch(
+        async with self._connection_scope(conn) as active_conn:
+            # 1. Fetch shared analytics directly without executing the full dashboard
+            analytics = await self._fetch_student_analytics(
+                tenant_id=tenant_id,
+                student_id=student_id,
+                conn=active_conn,
+            )
+
+            # 2. Score evolution
+            evo_rows = await active_conn.fetch(
                 """
-                SELECT 
+                SELECT
                     to_char(qa.completed_at, 'DD Mon') AS date_label,
                     qa.score,
                     a.title AS activity_title
@@ -1072,10 +1201,10 @@ class LearningRepository:
                 for r in evo_rows
             ]
 
-            # 2. KC Mastery breakdown
-            kc_rows = await conn.fetch(
+            # 3. KC Mastery breakdown
+            kc_rows = await active_conn.fetch(
                 """
-                SELECT 
+                SELECT
                     kc.id AS kc_id,
                     kc.name AS kc_name,
                     u.title AS unit_title,
@@ -1127,10 +1256,10 @@ class LearningRepository:
                     )
                 )
 
-            # 3. Completed activity history
-            hist_rows = await conn.fetch(
+            # 4. Completed activity history
+            hist_rows = await active_conn.fetch(
                 """
-                SELECT 
+                SELECT
                     qa.id AS attempt_id,
                     a.id AS activity_id,
                     a.title AS activity_title,
@@ -1163,7 +1292,7 @@ class LearningRepository:
             ]
 
             return StudentProgressDetailResponse(
-                analytics=dashboard.analytics,
+                analytics=analytics,
                 evolution=evolution,
                 kc_breakdown=kc_breakdown,
                 activity_history=activity_history,
