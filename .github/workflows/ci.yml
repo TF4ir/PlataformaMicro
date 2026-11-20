@@ -73,11 +73,11 @@ jobs:
       - name: Install Ruff and Mypy
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy pydantic fastapi httpx asyncpg
+          pip install ruff mypy pydantic pydantic-settings fastapi httpx asyncpg
 
       - name: Ruff Lint & Formatting Check
         run: |
-          ruff check services/ml-api
+          ruff check services/ml-api scripts/sync_openapi.py
 
       - name: Mypy Strict Type Check
         run: |

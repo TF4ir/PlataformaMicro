@@ -122,20 +122,26 @@ def main() -> int:
     with open(spec_path, encoding="utf-8") as f:
         current_content = f.read()
 
+    def _display_path(p: Path) -> str:
+        try:
+            return str(p.relative_to(REPO_ROOT))
+        except ValueError:
+            return str(p)
+
     if args.check:
         if current_content == canonical_json_str:
             print("OK: OpenAPI contract is up to date with canonical FastAPI application.")
             return 0
 
         print(
-            f"ERROR: OpenAPI contract at {spec_path.relative_to(REPO_ROOT)} is OUT OF SYNC with FastAPI app.openapi()!",
+            f"ERROR: OpenAPI contract at {_display_path(spec_path)} is OUT OF SYNC with FastAPI app.openapi()!",
             file=sys.stderr,
         )
         print("Diff (current vs canonical):", file=sys.stderr)
         diff = difflib.unified_diff(
             current_content.splitlines(keepends=True),
             canonical_json_str.splitlines(keepends=True),
-            fromfile=str(spec_path.relative_to(REPO_ROOT)),
+            fromfile=_display_path(spec_path),
             tofile="canonical_app_openapi.json",
             n=3,
         )
@@ -153,7 +159,7 @@ def main() -> int:
 
     print(
         f"SUCCESS: Synchronized canonical OpenAPI schema ({len(canonical_spec['paths'])} paths, "
-        f"{len(canonical_spec.get('components', {}).get('schemas', {}))} schemas) -> {spec_path.relative_to(REPO_ROOT)}"
+        f"{len(canonical_spec.get('components', {}).get('schemas', {}))} schemas) -> {_display_path(spec_path)}"
     )
     return 0
 

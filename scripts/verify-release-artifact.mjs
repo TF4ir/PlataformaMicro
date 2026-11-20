@@ -52,6 +52,42 @@ function parseArgs() {
   return { buildStartTime, maxAgeMinutes, writeManifest };
 }
 
+function stripTrailingCommas(text) {
+  let insideString = false;
+  let stringChar = '"';
+  let isEscaped = false;
+  const chars = text.split("");
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (insideString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (ch === "\\") {
+        isEscaped = true;
+      } else if (ch === stringChar) {
+        insideString = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      insideString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < chars.length && /\s/.test(chars[j])) {
+        j++;
+      }
+      if (j < chars.length && (chars[j] === "}" || chars[j] === "]")) {
+        chars[i] = " ";
+      }
+    }
+  }
+  return chars.join("");
+}
+
 function stripJsonComments(text) {
   let insideString = false;
   let stringChar = '"';
@@ -103,7 +139,7 @@ function stripJsonComments(text) {
 
     out += ch;
   }
-  return out;
+  return stripTrailingCommas(out);
 }
 
 function getGitMetadata() {
@@ -156,13 +192,29 @@ export function verifyReleaseArtifact(options = {}) {
 
   if (!existsSync(ASSETS_DIR)) {
     errors.push(`Missing static assets directory at ${relative(REPO_ROOT, ASSETS_DIR)}`);
+  } else {
+    try {
+      const assetFiles = readdirSync(ASSETS_DIR);
+      if (assetFiles.length === 0) {
+        errors.push(`Static assets directory at ${relative(REPO_ROOT, ASSETS_DIR)} is empty`);
+      }
+    } catch (err) {
+      errors.push(`Failed to read static assets directory: ${err.message}`);
+    }
   }
 
   let buildId = "";
-  if (!existsSync(BUILD_ID_FILE)) {
+  const altBuildIdFile = join(ASSETS_DIR, "BUILD_ID");
+  const resolvedBuildIdFile = existsSync(BUILD_ID_FILE)
+    ? BUILD_ID_FILE
+    : existsSync(altBuildIdFile)
+    ? altBuildIdFile
+    : null;
+
+  if (!resolvedBuildIdFile) {
     errors.push(`Missing Next.js BUILD_ID file at ${relative(REPO_ROOT, BUILD_ID_FILE)}`);
   } else {
-    buildId = readFileSync(BUILD_ID_FILE, "utf8").trim();
+    buildId = readFileSync(resolvedBuildIdFile, "utf8").trim();
     if (!buildId) {
       errors.push("Next.js BUILD_ID file is empty");
     }

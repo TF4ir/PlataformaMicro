@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Users,
   Search,
@@ -29,13 +29,13 @@ export default function TeacherStudentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSection, setSelectedSection] = useState("all");
 
-  const loadStudents = async () => {
+  const fetchStudents = useCallback(async (sectionId?: string, query?: string) => {
     try {
       setLoading(true);
       setError(null);
       const data = await getTeacherStudents(
-        selectedSection === "all" ? undefined : selectedSection,
-        searchTerm.trim() || undefined
+        sectionId === "all" ? undefined : sectionId,
+        query?.trim() || undefined
       );
       setStudents(data);
     } catch (err: unknown) {
@@ -44,15 +44,15 @@ export default function TeacherStudentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadStudents();
-  }, [selectedSection]);
+    fetchStudents(selectedSection);
+  }, [selectedSection, fetchStudents]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loadStudents();
+    fetchStudents(selectedSection, searchTerm);
   };
 
   // Unique sections for filter

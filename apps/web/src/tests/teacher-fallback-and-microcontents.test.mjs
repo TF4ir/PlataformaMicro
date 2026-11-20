@@ -324,10 +324,90 @@ describe("C8: Endurecimiento de Fallback Docente (teacher.ts)", () => {
   });
 
   // =========================================================================
-  // 4. Transport Error Fallback Activation
+  // 4. Simulated Runtime Verification with HTTP 401, 429, and 500
   // =========================================================================
-  describe("4. Error de Transporte Real (status 0 / Red caída): activa fallback a Supabase", () => {
-    test("4.1. Fallo de red (fetch lanza TypeError): activa fallback a Supabase", async () => {
+  describe("4. Pruebas de Ejecución: HTTP 401, 429 y 500 relanzan error sin fallback a Supabase", () => {
+    test("4.1. HTTP 401 Unauthorized relanza ApiClientError(401) sin fallback", async () => {
+      globalThis.fetch = () => mockResponse(401, { detail: "Token expired or invalid" });
+      let supabaseInvoked = false;
+
+      await assert.rejects(
+        async () => {
+          try {
+            await apiFetch("/api/v1/teacher/dashboard", { method: "GET" }, "teacher");
+          } catch (err) {
+            if (isTransportError(err)) {
+              supabaseInvoked = true;
+              return {};
+            }
+            throw err;
+          }
+        },
+        (err) => {
+          assert.ok(err instanceof ApiClientError);
+          assert.strictEqual(err.status, 401);
+          return true;
+        }
+      );
+      assert.strictEqual(supabaseInvoked, false);
+    });
+
+    test("4.2. HTTP 429 Rate Limit relanza ApiClientError(429) sin fallback", async () => {
+      globalThis.fetch = () => mockResponse(429, { detail: "Too Many Requests" });
+      let supabaseInvoked = false;
+
+      await assert.rejects(
+        async () => {
+          try {
+            await apiFetch("/api/v1/teacher/reports", { method: "GET" }, "teacher");
+          } catch (err) {
+            if (isTransportError(err)) {
+              supabaseInvoked = true;
+              return {};
+            }
+            throw err;
+          }
+        },
+        (err) => {
+          assert.ok(err instanceof ApiClientError);
+          assert.strictEqual(err.status, 429);
+          return true;
+        }
+      );
+      assert.strictEqual(supabaseInvoked, false);
+    });
+
+    test("4.3. HTTP 500 Internal Server Error relanza ApiClientError(500) sin fallback", async () => {
+      globalThis.fetch = () => mockResponse(500, { detail: "Internal Server Error" });
+      let supabaseInvoked = false;
+
+      await assert.rejects(
+        async () => {
+          try {
+            await apiFetch("/api/v1/teacher/courses", { method: "GET" }, "teacher");
+          } catch (err) {
+            if (isTransportError(err)) {
+              supabaseInvoked = true;
+              return [];
+            }
+            throw err;
+          }
+        },
+        (err) => {
+          assert.ok(err instanceof ApiClientError);
+          assert.strictEqual(err.status, 500);
+          return true;
+        }
+      );
+      assert.strictEqual(supabaseInvoked, false);
+    });
+  });
+
+  // =========================================================================
+  // 5. Transport Error Fallback Activation
+  // =========================================================================
+  describe("5. Error de Transporte Real (status 0 / Red caída): activa fallback a Supabase", () => {
+    test("5.1. Fallo de red (fetch lanza TypeError): activa fallback a Supabase", async () => {
       globalThis.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
       let fallbackActivated = false;
 
