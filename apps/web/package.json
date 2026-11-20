@@ -10,7 +10,7 @@
     "deploy:dry-run": "node ../../scripts/release-cloudflare.mjs --dry-run",
     "verify:artifact": "node ../../scripts/verify-release-artifact.mjs",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "NODE_PATH=./node_modules:../../node_modules next lint",
     "type-check": "tsc --noEmit",
     "test": "node --test src/tests/*.test.mjs"
   },
