@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     ENABLE_CORS_MIDDLEWARE: bool = True
     CONTENT_GENERATION_WORKER_ENABLED: bool = True
 
+    # Retention Prediction & Spaced Repetition Thresholds (AGENTS.md Rule 5.1)
+    DEFAULT_TAU_THRESHOLD: float = 0.650
+    ADAPTATION_COOLDOWN_HOURS: int = 24
+
     # Database connection pooling & Supavisor settings
     DB_POOL_MIN_SIZE: int = 1
     DB_POOL_MAX_SIZE: int = 5

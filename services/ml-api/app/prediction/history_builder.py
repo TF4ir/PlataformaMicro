@@ -123,6 +123,7 @@ class UnifiedHistoryBuilder:
             if knowledge_component_id is not None:
                 kc_query += " AND kc.id = $3"
                 params.append(knowledge_component_id)
+            kc_query += " ORDER BY kc.name ASC, kc.id ASC"
 
             kc_rows = await conn.fetch(kc_query, *params)
             kc_map: dict[uuid.UUID, tuple[str, float]] = {

@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 import asyncpg
 
+from app.core.config import settings
 from app.schemas.adaptation import (
     AdaptationEvaluationResponse,
     EvaluationResultItem,
@@ -34,11 +35,15 @@ class AdaptationEngine:
         self,
         policy_name: str = "preventive_spaced_repetition",
         policy_version: str = "1.0.0",
-        anti_fatigue_hours: int = 24,
+        anti_fatigue_hours: int | None = None,
     ) -> None:
         self.policy_name = policy_name
         self.policy_version = policy_version
-        self.anti_fatigue_hours = anti_fatigue_hours
+        self.anti_fatigue_hours = (
+            anti_fatigue_hours
+            if anti_fatigue_hours is not None
+            else settings.ADAPTATION_COOLDOWN_HOURS
+        )
 
     async def evaluate_and_generate_recommendations(
         self,
@@ -46,16 +51,22 @@ class AdaptationEngine:
         student_id: uuid.UUID,
         tenant_id: uuid.UUID,
         retention_predictions: list[KCRetentionPrediction],
-        tau: float = 0.650,
+        tau: float | None = None,
     ) -> AdaptationEvaluationResponse:
         """Evaluate retention states and issue non-duplicate, cooldown-compliant recommendations."""
+        effective_tau = tau if tau is not None else settings.DEFAULT_TAU_THRESHOLD
         now = datetime.now(UTC)
         cooldown_window = now - timedelta(hours=self.anti_fatigue_hours)
 
         decisions: list[EvaluationResultItem] = []
         created_count = 0
 
-        async with pool.acquire() as conn:
+        async with pool.acquire() as conn, conn.transaction():
+            # Acquire transaction-level advisory lock to serialize adaptation evaluation per student
+            await conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext($1))",
+                f"adaptation_{student_id}",
+            )
             for pred in retention_predictions:
                 kc_id = pred.knowledge_component_id
                 kc_name = pred.knowledge_component_name
@@ -90,9 +101,9 @@ class AdaptationEngine:
 
                 else:
                     # Model prediction available: check threshold crossing
-                    if pred.current_recall_probability <= tau:
+                    if pred.current_recall_probability <= effective_tau:
                         needs_review = True
-                        decision_reason = f"Probabilidad actual ({pred.current_recall_probability:.2f}) se encuentra en o por debajo del umbral de consolidación ({tau:.2f})."
+                        decision_reason = f"Probabilidad actual ({pred.current_recall_probability:.2f}) se encuentra en o por debajo del umbral de consolidación ({effective_tau:.2f})."
                     elif pred.predicted_forgetting_time_days is not None and pred.predicted_forgetting_time_days <= 3.0:
                         needs_review = True
                         decision_reason = f"Se proyecta que la probabilidad descenderá al umbral en {pred.predicted_forgetting_time_days:.1f} días. Momento ideal para repaso preventivo."

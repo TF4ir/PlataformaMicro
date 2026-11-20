@@ -17,6 +17,7 @@ Validates the full cycle:
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -605,3 +606,248 @@ class TestR2AdaptiveLearningLoop:
             ]
             assert len(no_content_decisions) >= 1
             assert eval_data["recommendations_created"] == 0
+
+    @pytest.mark.asyncio
+    async def test_concurrent_attempt_submissions_no_deadlock_or_duplicate_recommendations(
+        self,
+        db_conn: asyncpg.Connection,
+        r2_test_environment: dict,
+    ):
+        """Verifies concurrent attempt finalization on different activities/KCs
+        completes safely without database deadlocks and produces zero duplicate recommendations."""
+        ctx = r2_test_environment
+        student_token = create_student_token(ctx["student1_id"], ctx["tenant_id"])
+        headers = {"Authorization": f"Bearer {student_token}"}
+
+        # Create a second KC, question, microcontent, and activity for Section 1
+        kc2_id = uuid.uuid4()
+        await db_conn.execute(
+            """
+            INSERT INTO knowledge_components (id, tenant_id, unit_id, name, description, difficulty_prior)
+            VALUES ($1, $2, (SELECT id FROM units WHERE course_id = $3 LIMIT 1), 'Ciclo de Calvin', 'Fase oscura de la fotosíntesis', 0.60)
+            """,
+            kc2_id,
+            ctx["tenant_id"],
+            ctx["course_id"],
+        )
+        import json
+        micro2_id = uuid.uuid4()
+        await db_conn.execute(
+            """
+            INSERT INTO microcontents (
+                id, tenant_id, knowledge_component_id, title,
+                content_type, content_body, is_published, estimated_duration_seconds, created_by
+            ) VALUES ($1, $2, $3, 'Microlección: Ciclo de Calvin', 'text_summary'::content_type_enum, $4::jsonb, true, 200, $5)
+            """,
+            micro2_id,
+            ctx["tenant_id"],
+            kc2_id,
+            json.dumps({"summary": "Fase oscura fijación de carbono"}),
+            ctx["teacher_id"],
+        )
+        q2_id = uuid.uuid4()
+        await db_conn.execute(
+            """
+            INSERT INTO questions (id, tenant_id, knowledge_component_id, question_text, explanation, difficulty, created_by, is_active)
+            VALUES ($1, $2, $3, '¿Dónde ocurre el ciclo de Calvin?', 'En el estroma del cloroplasto.', 0.55, $4, true)
+            """,
+            q2_id,
+            ctx["tenant_id"],
+            kc2_id,
+            ctx["teacher_id"],
+        )
+        opt2_c_id = uuid.uuid4()
+        opt2_i_id = uuid.uuid4()
+        await db_conn.execute(
+            """
+            INSERT INTO question_options (id, question_id, option_text, is_correct, order_index) VALUES
+                ($1, $2, 'Estroma', true, 1),
+                ($3, $2, 'Tilacoide', false, 2)
+            """,
+            opt2_c_id,
+            q2_id,
+            opt2_i_id,
+        )
+        act2_id = uuid.uuid4()
+        await db_conn.execute(
+            """
+            INSERT INTO activities (
+                id, tenant_id, course_id, title, activity_type,
+                feedback_policy, max_attempts, is_active, status, created_by
+            ) VALUES ($1, $2, $3, 'Cuestionario: Ciclo de Calvin', 'formative'::activity_type_enum, 'upon_completion'::feedback_policy_enum, 3, true, 'published', $4)
+            """,
+            act2_id,
+            ctx["tenant_id"],
+            ctx["course_id"],
+            ctx["teacher_id"],
+        )
+        await db_conn.execute(
+            "INSERT INTO activity_questions (activity_id, question_id, order_index) VALUES ($1, $2, 1)",
+            act2_id,
+            q2_id,
+        )
+        await db_conn.execute(
+            "INSERT INTO activity_sections (activity_id, section_id, tenant_id) VALUES ($1, $2, $3)",
+            act2_id,
+            ctx["section1_id"],
+            ctx["tenant_id"],
+        )
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # Start attempt 1 on Activity 1
+            res_start1 = await client.post(
+                f"/api/v1/students/me/activities/{ctx['activity_id']}/attempts",
+                headers=headers,
+                json={},
+            )
+            assert res_start1.status_code == 201
+            att1_id = res_start1.json()["attempt_id"]
+
+            # Start attempt 2 on Activity 2
+            res_start2 = await client.post(
+                f"/api/v1/students/me/activities/{act2_id}/attempts",
+                headers=headers,
+                json={},
+            )
+            assert res_start2.status_code == 201
+            att2_id = res_start2.json()["attempt_id"]
+
+            # Submit answers for both
+            res_ans1 = await client.post(
+                f"/api/v1/students/me/attempts/{att1_id}/answers",
+                headers=headers,
+                json={
+                    "question_id": str(ctx["q_id"]),
+                    "selected_option_id": str(ctx["opt_incorrect_id"]),
+                    "response_time_seconds": 3.0,
+                },
+            )
+            assert res_ans1.status_code == 201
+
+            res_ans2 = await client.post(
+                f"/api/v1/students/me/attempts/{att2_id}/answers",
+                headers=headers,
+                json={
+                    "question_id": str(q2_id),
+                    "selected_option_id": str(opt2_i_id),
+                    "response_time_seconds": 3.5,
+                },
+            )
+            assert res_ans2.status_code == 201
+
+            # Submit both attempts concurrently with asyncio.gather
+            sub1_task = client.post(f"/api/v1/students/me/attempts/{att1_id}/submit", headers=headers)
+            sub2_task = client.post(f"/api/v1/students/me/attempts/{att2_id}/submit", headers=headers)
+
+            res_sub1, res_sub2 = await asyncio.gather(sub1_task, sub2_task)
+            assert res_sub1.status_code == 200
+            assert res_sub2.status_code == 200
+
+            # Verify both student_knowledge_states are upserted without deadlock
+            states = await db_conn.fetch(
+                """
+                SELECT knowledge_component_id, p_mastery, total_interactions
+                FROM student_knowledge_states
+                WHERE student_id = $1 AND knowledge_component_id IN ($2, $3)
+                """,
+                ctx["student1_id"],
+                ctx["kc_id"],
+                kc2_id,
+            )
+            assert len(states) == 2
+
+            # Verify no duplicate recommendations were generated per KC
+            for kc in (ctx["kc_id"], kc2_id):
+                pending_count = await db_conn.fetchval(
+                    "SELECT COUNT(*) FROM recommendations WHERE student_id = $1 AND knowledge_component_id = $2 AND status = 'pending'",
+                    ctx["student1_id"],
+                    kc,
+                )
+                assert pending_count == 1, f"Expected exactly 1 pending recommendation for KC {kc}, got {pending_count}"
+
+    @pytest.mark.asyncio
+    async def test_cold_start_initial_practice_and_anti_fatigue_cooldown(
+        self,
+        db_conn: asyncpg.Connection,
+        r2_test_environment: dict,
+    ):
+        """Verifies cold-start transition: 0 prior interactions -> initial practice triggers
+        rule-based consolidation recommendation, while immediate subsequent practice respects
+        24h anti-fatigue cooldown and rejects duplication."""
+        ctx = r2_test_environment
+        student_token = create_student_token(ctx["student1_id"], ctx["tenant_id"])
+        headers = {"Authorization": f"Bearer {student_token}"}
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # First attempt: cold start with 0 prior interactions
+            res_start1 = await client.post(
+                f"/api/v1/students/me/activities/{ctx['activity_id']}/attempts",
+                headers=headers,
+                json={},
+            )
+            att1_id = res_start1.json()["attempt_id"]
+
+            await client.post(
+                f"/api/v1/students/me/attempts/{att1_id}/answers",
+                headers=headers,
+                json={
+                    "question_id": str(ctx["q_id"]),
+                    "selected_option_id": str(ctx["opt_incorrect_id"]),
+                    "response_time_seconds": 4.0,
+                },
+            )
+
+            res_sub1 = await client.post(
+                f"/api/v1/students/me/attempts/{att1_id}/submit",
+                headers=headers,
+            )
+            assert res_sub1.status_code == 200
+
+            # Verify initial recommendation was created under rule_based_fallback / cold-start
+            rec1 = await db_conn.fetchrow(
+                """
+                SELECT id, selection_method::text, status::text, decision_reason
+                FROM recommendations
+                WHERE student_id = $1 AND knowledge_component_id = $2
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                ctx["student1_id"],
+                ctx["kc_id"],
+            )
+            assert rec1 is not None
+            assert rec1["status"] == "pending"
+            assert "cold-start" in rec1["decision_reason"] or "Consolidación" in rec1["decision_reason"]
+
+            # Second attempt immediately after on the same KC
+            res_start2 = await client.post(
+                f"/api/v1/students/me/activities/{ctx['activity_id']}/attempts",
+                headers=headers,
+                json={},
+            )
+            att2_id = res_start2.json()["attempt_id"]
+
+            await client.post(
+                f"/api/v1/students/me/attempts/{att2_id}/answers",
+                headers=headers,
+                json={
+                    "question_id": str(ctx["q_id"]),
+                    "selected_option_id": str(ctx["opt_incorrect_id"]),
+                    "response_time_seconds": 3.0,
+                },
+            )
+
+            res_sub2 = await client.post(
+                f"/api/v1/students/me/attempts/{att2_id}/submit",
+                headers=headers,
+            )
+            assert res_sub2.status_code == 200
+
+            # Total recommendations count must still be strictly 1 (no duplication under cooldown)
+            total_recs = await db_conn.fetchval(
+                "SELECT COUNT(*) FROM recommendations WHERE student_id = $1 AND knowledge_component_id = $2",
+                ctx["student1_id"],
+                ctx["kc_id"],
+            )
+            assert total_recs == 1

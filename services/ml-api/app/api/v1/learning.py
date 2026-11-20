@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.adaptation.adaptation_engine import AdaptationEngine
 from app.core.auth import AuthenticatedUser, require_role
+from app.core.config import settings
 from app.prediction.inference_service import RetentionInferenceService
 from app.repositories.learning_repository import LearningRepository
 from app.schemas.learning import (
@@ -340,7 +341,7 @@ async def submit_attempt(
                 pool=pool,
                 student_id=student_uuid,
                 tenant_id=tenant_uuid,
-                tau=0.650,
+                tau=settings.DEFAULT_TAU_THRESHOLD,
                 persist_predictions=True,
             )
             if profile.kcs:
@@ -349,7 +350,7 @@ async def submit_attempt(
                     student_id=student_uuid,
                     tenant_id=tenant_uuid,
                     retention_predictions=profile.kcs,
-                    tau=0.650,
+                    tau=settings.DEFAULT_TAU_THRESHOLD,
                 )
         except (asyncpg.PostgresError, ValueError, KeyError, OSError, RuntimeError) as exc:
             logger.warning(
