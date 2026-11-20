@@ -4534,7 +4534,7 @@
           "Flujo de Aprendizaje del Estudiante"
         ],
         "summary": "Finalizar y calificar intento de actividad",
-        "description": "Finalize the attempt, evaluate total score based on answer_events, and lock session.",
+        "description": "Finalize the attempt, evaluate total score based on answer_events, lock session,\nupdate predictive retention knowledge states, and schedule adaptive recommendations.",
         "operationId": "submit_attempt_api_v1_students_me_attempts__attempt_id__submit_post",
         "parameters": [
           {

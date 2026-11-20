@@ -4,9 +4,12 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
+from app.adaptation.adaptation_engine import AdaptationEngine
 from app.core.auth import AuthenticatedUser, require_role
+from app.prediction.inference_service import RetentionInferenceService
 from app.repositories.learning_repository import LearningRepository
 from app.schemas.learning import (
     AttemptResultsResponse,
@@ -43,6 +46,32 @@ def get_learning_repo() -> LearningRepository:
             },
         )
     return LearningRepository(pool=_POOL)
+
+
+def get_db_pool() -> asyncpg.Pool:
+    """Dependency injection for database pool."""
+    from app.content_generation.infrastructure.database import _POOL
+
+    if _POOL is None or getattr(_POOL, "_closed", True):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "type": "https://api.plataformamicro.edu.pe/errors/database-unavailable",
+                "title": "Base de datos no disponible",
+                "status": 503,
+                "detail": "El pool de conexiones a PostgreSQL no está inicializado.",
+                "code": "DATABASE_UNAVAILABLE",
+            },
+        )
+    return _POOL
+
+
+def get_inference_service() -> RetentionInferenceService:
+    return RetentionInferenceService()
+
+
+def get_adaptation_engine() -> AdaptationEngine:
+    return AdaptationEngine()
 
 
 @router.get(
@@ -290,16 +319,46 @@ async def submit_attempt(
     attempt_id: UUID,
     current_user: Annotated[AuthenticatedUser, Depends(require_role("student"))],
     repo: Annotated[LearningRepository, Depends(get_learning_repo)],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    inference_service: Annotated[RetentionInferenceService, Depends(get_inference_service)],
+    adaptation_engine: Annotated[AdaptationEngine, Depends(get_adaptation_engine)],
 ) -> SubmitAttemptResponse:
-    """Finalize the attempt, evaluate total score based on answer_events, and lock session."""
+    """Finalize the attempt, evaluate total score based on answer_events, lock session,
+    update predictive retention knowledge states, and schedule adaptive recommendations."""
     try:
         tenant_uuid = UUID(current_user.tenant_id)
         student_uuid = UUID(current_user.user_id)
-        return await repo.submit_attempt(
+        result = await repo.submit_attempt(
             tenant_id=tenant_uuid,
             student_id=student_uuid,
             attempt_id=attempt_id,
         )
+
+        # Trigger predictive retention update and adaptive recommendation evaluation
+        try:
+            profile = await inference_service.get_student_retention_profile(
+                pool=pool,
+                student_id=student_uuid,
+                tenant_id=tenant_uuid,
+                tau=0.650,
+                persist_predictions=True,
+            )
+            if profile.kcs:
+                await adaptation_engine.evaluate_and_generate_recommendations(
+                    pool=pool,
+                    student_id=student_uuid,
+                    tenant_id=tenant_uuid,
+                    retention_predictions=profile.kcs,
+                    tau=0.650,
+                )
+        except (asyncpg.PostgresError, ValueError, KeyError, OSError, RuntimeError) as exc:
+            logger.warning(
+                "Predictive retention update / adaptation deferred on attempt %s submit: %s",
+                attempt_id,
+                exc,
+            )
+
+        return result
     except KeyError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
