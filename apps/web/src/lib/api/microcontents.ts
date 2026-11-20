@@ -125,13 +125,11 @@ export async function listMicrocontents(options?: {
   courseId?: string;
   unitId?: string;
   kcId?: string;
-  status?: string;
 }): Promise<MicrocontentListItem[]> {
   const query = new URLSearchParams();
   if (options?.courseId) query.set("course_id", options.courseId);
   if (options?.unitId) query.set("unit_id", options.unitId);
-  if (options?.kcId) query.set("knowledge_component_id", options.kcId);
-  if (options?.status) query.set("status", options.status);
+  if (options?.kcId) query.set("kc_id", options.kcId);
 
   const qs = query.toString();
   return apiFetch<MicrocontentListItem[]>(
@@ -161,7 +159,7 @@ export async function updateMicrocontent(
   return apiFetch<MicrocontentDetailResponse>(
     `/api/v1/microcontents/${id}`,
     {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(payload),
     },
     "teacher"

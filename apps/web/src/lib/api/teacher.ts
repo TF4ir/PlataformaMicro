@@ -3,7 +3,7 @@
  * Connects Next.js web application to FastAPI /api/v1/teacher endpoints.
  */
 
-import { apiFetch, isBackendConfigured } from "./client";
+import { apiFetch, isBackendConfigured, isTransportError } from "./client";
 import {
   buildProficiencyDistribution,
   classifyMastery,
@@ -178,8 +178,12 @@ export async function getTeacherDashboard(
         { method: "GET" },
         "teacher"
       );
-    } catch (e) {
-      console.warn("FastAPI unreachable, fallback to Supabase for teacher dashboard:", e);
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, fallback to Supabase for teacher dashboard:", err);
+        return await getTeacherDashboardFromSupabase(sectionId);
+      }
+      throw err;
     }
   }
   return await getTeacherDashboardFromSupabase(sectionId);
@@ -193,8 +197,12 @@ export async function getTeacherCourses(): Promise<TeacherCourseDetail[]> {
         { method: "GET" },
         "teacher"
       );
-    } catch (e) {
-      console.warn("FastAPI unreachable, fallback to Supabase for teacher courses:", e);
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, fallback to Supabase for teacher courses:", err);
+        return await getTeacherCoursesFromSupabase();
+      }
+      throw err;
     }
   }
   return await getTeacherCoursesFromSupabase();
@@ -215,8 +223,12 @@ export async function getTeacherStudents(
         { method: "GET" },
         "teacher"
       );
-    } catch (e) {
-      console.warn("FastAPI unreachable, fallback to Supabase for teacher students:", e);
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, fallback to Supabase for teacher students:", err);
+        return await getTeacherStudentsFromSupabase(sectionId, search);
+      }
+      throw err;
     }
   }
   return await getTeacherStudentsFromSupabase(sectionId, search);
@@ -237,8 +249,12 @@ export async function getTeacherReports(
         { method: "GET" },
         "teacher"
       );
-    } catch (e) {
-      console.warn("FastAPI unreachable, fallback to Supabase for teacher reports:", e);
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, fallback to Supabase for teacher reports:", err);
+        return await getTeacherReportsFromSupabase(sectionId, courseId);
+      }
+      throw err;
     }
   }
   return await getTeacherReportsFromSupabase(sectionId, courseId);
