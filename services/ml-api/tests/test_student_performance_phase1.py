@@ -13,9 +13,9 @@ import asyncio
 import os
 import time
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -24,7 +24,6 @@ import httpx
 import pytest
 
 import app.content_generation.infrastructure.database as db_mod
-from app.api.v1.learning import get_learning_repo
 from app.main import app
 from app.repositories.learning_repository import LearningRepository
 from app.schemas.activities import AttemptStatus
@@ -674,7 +673,7 @@ async def test_03d_fetch_student_analytics_independent_oracle_validation(pool_si
     opt1_id = uuid4()
     opt2_id = uuid4()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with pool_size_1.acquire() as conn:
         # 1. Estudiante aislado
@@ -1005,9 +1004,11 @@ async def test_06a_dashboard_exception_releases_connection_to_pool(pool_size_1: 
     repo = LearningRepository(pool=pool_size_1)
 
     # Forzar fallo simulando error en consulta SQL interna
-    with patch.object(asyncpg.Connection, "fetchrow", side_effect=asyncpg.PostgresError("Simulated SQL Error")):
-        with pytest.raises(asyncpg.PostgresError):
-            await repo.get_student_dashboard(tenant_id=UUID(TENANT_A), student_id=UUID(STUDENT_A1))
+    with (
+        patch.object(asyncpg.Connection, "fetchrow", side_effect=asyncpg.PostgresError("Simulated SQL Error")),
+        pytest.raises(asyncpg.PostgresError),
+    ):
+        await repo.get_student_dashboard(tenant_id=UUID(TENANT_A), student_id=UUID(STUDENT_A1))
 
     # Verificar que el pool max_size=1 sigue operativo inmediatamente sin quedar trabado
     async with pool_size_1.acquire() as conn:
@@ -1020,9 +1021,11 @@ async def test_06b_progress_exception_releases_connection_to_pool(pool_size_1: a
     """Si ocurre un error en get_student_progress, la conexión se libera inmediatamente al pool."""
     repo = LearningRepository(pool=pool_size_1)
 
-    with patch.object(repo, "_fetch_student_analytics", side_effect=RuntimeError("Simulated Analytics Failure")):
-        with pytest.raises(RuntimeError):
-            await repo.get_student_progress(tenant_id=UUID(TENANT_A), student_id=UUID(STUDENT_A1))
+    with (
+        patch.object(repo, "_fetch_student_analytics", side_effect=RuntimeError("Simulated Analytics Failure")),
+        pytest.raises(RuntimeError),
+    ):
+        await repo.get_student_progress(tenant_id=UUID(TENANT_A), student_id=UUID(STUDENT_A1))
 
     # El pool con tamaño 1 debe poder atender una consulta inmediatamente
     async with pool_size_1.acquire() as conn:

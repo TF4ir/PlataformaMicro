@@ -3,6 +3,7 @@
  * Connects Next.js web application to FastAPI /api/v1 activities & student learning endpoints.
  */
 
+import { apiFetch, ApiClientError, isTransportError } from "@/lib/api/client";
 import {
   DataProvenance,
   MetricMeta,
@@ -398,60 +399,10 @@ export interface ActivityResultsResponse {
   student_attempts: StudentAttemptSummary[];
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-function shouldFetchBackend(): boolean {
-  if (typeof window !== "undefined") {
-    if (
-      window.location.protocol === "https:" &&
-      (!API_BASE_URL ||
-        API_BASE_URL.startsWith("http://localhost") ||
-        API_BASE_URL.startsWith("http://127.0.0.1"))
-    ) {
-      return false;
-    }
-  }
-  return Boolean(API_BASE_URL);
-}
-
-// Dynamic Auth & Headers helpers
-async function getAuthToken(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  try {
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (!error && session?.access_token) {
-      return session.access_token;
-    }
-  } catch (err) {
-    // In environments without window or active Supabase context
-  }
-  return null;
-}
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  const token = await getAuthToken();
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  // No identity fallback: requests without a verified session are sent
-  // unauthenticated and the FastAPI backend rejects them with 401.
-  return headers;
-}
-
-async function getTeacherHeaders(): Promise<Record<string, string>> {
-  return getAuthHeaders();
-}
-
-async function getStudentHeaders(): Promise<Record<string, string>> {
-  return getAuthHeaders();
-}
+/**
+ * Re-export transport error detector from central API client.
+ */
+export { isTransportError };
 
 export function extractErrorMessage(err: unknown, fallback: string): string {
   if (!err || typeof err !== "object") return fallback;
@@ -469,7 +420,7 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
 
 export const learningApi = {
   // -------------------------------------------------------------
-  // Teacher Activity Operations
+  // Teacher Activity Operations (Authoritative FastAPI Backend)
   // -------------------------------------------------------------
 
   async listTeacherActivities(courseId?: string, status?: ActivityStatus): Promise<ActivityListItem[]> {
@@ -478,168 +429,109 @@ export const learningApi = {
     if (status) params.append("status", status);
     const qs = params.toString() ? `?${params.toString()}` : "";
 
-    const res = await fetch(`${API_BASE_URL}/api/v1/activities${qs}`, {
-      headers: await getTeacherHeaders(),
+    return apiFetch<ActivityListItem[]>(`/api/v1/activities${qs}`, {
       cache: "no-store",
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al listar actividades docentes"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   async getActivity(activityId: string): Promise<ActivityDetailResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/activities/${activityId}`, {
-      headers: await getTeacherHeaders(),
+    return apiFetch<ActivityDetailResponse>(`/api/v1/activities/${activityId}`, {
       cache: "no-store",
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al obtener actividad"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   async createActivity(payload: ActivityCreatePayload): Promise<ActivityDetailResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/activities`, {
+    return apiFetch<ActivityDetailResponse>("/api/v1/activities", {
       method: "POST",
-      headers: await getTeacherHeaders(),
       body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al crear actividad"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   async updateActivity(activityId: string, payload: Partial<ActivityCreatePayload>): Promise<ActivityDetailResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/activities/${activityId}`, {
+    return apiFetch<ActivityDetailResponse>(`/api/v1/activities/${activityId}`, {
       method: "PATCH",
-      headers: await getTeacherHeaders(),
       body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al actualizar actividad"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   async publishActivity(activityId: string): Promise<ActivityDetailResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/activities/${activityId}/publish`, {
+    return apiFetch<ActivityDetailResponse>(`/api/v1/activities/${activityId}/publish`, {
       method: "POST",
-      headers: await getTeacherHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al publicar actividad"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   async getActivityResults(activityId: string): Promise<ActivityResultsResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/activities/${activityId}/results`, {
-      headers: await getTeacherHeaders(),
+    return apiFetch<ActivityResultsResponse>(`/api/v1/activities/${activityId}/results`, {
       cache: "no-store",
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al consultar analítica docente"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   async getCourseSections(courseId: string): Promise<CourseSectionItem[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/courses/${courseId}/sections`, {
-      headers: await getTeacherHeaders(),
+    return apiFetch<CourseSectionItem[]>(`/api/v1/courses/${courseId}/sections`, {
       cache: "no-store",
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(extractErrorMessage(err, "Error al listar secciones del curso"));
-    }
-    return res.json();
+    }, "teacher");
   },
 
   // -------------------------------------------------------------
-  // Student Learning Operations
+  // Student Learning Operations (FastAPI Backend Authoritative)
   // -------------------------------------------------------------
 
   async listStudentCourses(): Promise<StudentCourseItem[]> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/courses`, {
-          headers: await getStudentHeaders(),
-          cache: "no-store",
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for courses:", err);
+    try {
+      return await apiFetch<StudentCourseItem[]>(
+        "/api/v1/students/me/courses",
+        { cache: "no-store" },
+        "student"
+      );
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, fallback to Supabase for courses:", err);
+        return await listStudentCoursesFromSupabase();
       }
+      throw err;
     }
-    return await listStudentCoursesFromSupabase();
   },
 
   async listStudentActivities(): Promise<StudentActivityListItem[]> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/activities`, {
-          headers: await getStudentHeaders(),
-          cache: "no-store",
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for activities:", err);
+    try {
+      return await apiFetch<StudentActivityListItem[]>(
+        "/api/v1/students/me/activities",
+        { cache: "no-store" },
+        "student"
+      );
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, fallback to Supabase for activities:", err);
+        return await listStudentActivitiesFromSupabase();
       }
+      throw err;
     }
-    return await listStudentActivitiesFromSupabase();
   },
 
   async getStudentActivity(activityId: string): Promise<StudentActivityDetail> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/activities/${activityId}`, {
-          headers: await getStudentHeaders(),
-          cache: "no-store",
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for activity detail:", err);
-      }
-    }
-    return await getStudentActivityFromSupabase(activityId);
+    // Strictly authoritative FastAPI endpoint — no fallback to prevent bypassing section enrollment or dates
+    return apiFetch<StudentActivityDetail>(
+      `/api/v1/students/me/activities/${activityId}`,
+      { cache: "no-store" },
+      "student"
+    );
   },
 
   async startAttempt(activityId: string, idempotencyKey?: string): Promise<StartAttemptResponse> {
-    if (shouldFetchBackend()) {
-      try {
-        const baseHeaders = await getStudentHeaders();
-        const headers: Record<string, string> = { ...baseHeaders };
-        if (idempotencyKey) {
-          headers["X-Idempotency-Key"] = idempotencyKey;
-        }
-
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/activities/${activityId}/attempts`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ idempotency_key: idempotencyKey }),
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for starting attempt:", err);
-      }
+    // Strictly authoritative FastAPI endpoint — NO fallback to prevent bypassing max_attempts or availability
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers["X-Idempotency-Key"] = idempotencyKey;
     }
-    return await startAttemptFromSupabase(activityId, idempotencyKey);
+    return apiFetch<StartAttemptResponse>(
+      `/api/v1/students/me/activities/${activityId}/attempts`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ idempotency_key: idempotencyKey }),
+      },
+      "student"
+    );
   },
 
   async submitAnswer(
@@ -647,96 +539,75 @@ export const learningApi = {
     payload: SubmitAnswerPayload,
     idempotencyKey?: string
   ): Promise<SubmitAnswerResponse> {
-    if (shouldFetchBackend()) {
-      try {
-        const baseHeaders = await getStudentHeaders();
-        const headers: Record<string, string> = { ...baseHeaders };
-        const key = idempotencyKey || payload.idempotency_key;
-        if (key) {
-          headers["X-Idempotency-Key"] = key;
-        }
-
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/attempts/${attemptId}/answers`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for submitAnswer:", err);
-      }
+    // Strictly authoritative FastAPI endpoint — NO fallback to prevent bypassing completed attempts or duplicate answers
+    const headers: Record<string, string> = {};
+    const key = idempotencyKey || payload.idempotency_key;
+    if (key) {
+      headers["X-Idempotency-Key"] = key;
     }
-    return await submitAnswerFromSupabase(attemptId, payload);
+    return apiFetch<SubmitAnswerResponse>(
+      `/api/v1/students/me/attempts/${attemptId}/answers`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      },
+      "student"
+    );
   },
 
   async submitAttempt(attemptId: string): Promise<SubmitAttemptResponse> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/attempts/${attemptId}/submit`, {
-          method: "POST",
-          headers: await getStudentHeaders(),
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for submitAttempt:", err);
-      }
-    }
-    return await submitAttemptFromSupabase(attemptId);
+    // Strictly authoritative FastAPI endpoint — NO fallback to ensure atomic session sealing
+    return apiFetch<SubmitAttemptResponse>(
+      `/api/v1/students/me/attempts/${attemptId}/submit`,
+      {
+        method: "POST",
+      },
+      "student"
+    );
   },
 
   async getAttemptResults(attemptId: string): Promise<AttemptResultsResponse> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/students/me/attempts/${attemptId}/results`, {
-          headers: await getStudentHeaders(),
-          cache: "no-store",
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, fallback to Supabase for getAttemptResults:", err);
-      }
-    }
-    return await getAttemptResultsFromSupabase(attemptId);
+    // Strictly authoritative FastAPI endpoint — NO fallback to prevent premature answer leakage or bypassing after_deadline
+    return apiFetch<AttemptResultsResponse>(
+      `/api/v1/students/me/attempts/${attemptId}/results`,
+      {
+        cache: "no-store",
+      },
+      "student"
+    );
   },
 
   async getDashboard(): Promise<StudentDashboardResponse> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/learning/student/dashboard`, {
-          headers: await getStudentHeaders(),
-          cache: "no-store",
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, using resilient Supabase direct fallback:", err);
+    try {
+      return await apiFetch<StudentDashboardResponse>(
+        "/api/v1/learning/student/dashboard",
+        { cache: "no-store" },
+        "student"
+      );
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, using resilient Supabase direct fallback for dashboard:", err);
+        return await getStudentDashboardFromSupabase();
       }
+      throw err;
     }
-    return await getStudentDashboardFromSupabase();
   },
 
   async getProgress(): Promise<StudentProgressDetailResponse> {
-    if (shouldFetchBackend()) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/learning/student/progress`, {
-          headers: await getStudentHeaders(),
-          cache: "no-store",
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("FastAPI unreachable, using resilient Supabase direct fallback:", err);
+    try {
+      return await apiFetch<StudentProgressDetailResponse>(
+        "/api/v1/learning/student/progress",
+        { cache: "no-store" },
+        "student"
+      );
+    } catch (err: unknown) {
+      if (isTransportError(err)) {
+        console.warn("Transport failure reaching FastAPI, using resilient Supabase direct fallback for progress:", err);
+        return await getStudentProgressFromSupabase();
       }
+      throw err;
     }
-    return await getStudentProgressFromSupabase();
   },
 };
 
@@ -757,7 +628,7 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
 }
 
 async function getStudentSupabaseContext(): Promise<StudentSupabaseContext> {
-  const { createClient } = await import("@/lib/supabase/client");
+  const { createClient } = await import("../supabase/client");
   const supabase = createClient();
   const {
     data: { user },
@@ -913,6 +784,7 @@ async function getStudentDashboardFromSupabase(): Promise<StudentDashboardRespon
         )
         .in("id", assignedActivityIds)
         .eq("status", "published")
+        .eq("is_active", true)
         .order("published_at", { ascending: false, nullsFirst: false })
     : { data: [], error: null };
   if (activityError) {
@@ -1254,9 +1126,22 @@ async function getStudentDashboardFromSupabase(): Promise<StudentDashboardRespon
         available_until: activity.available_until || null,
         published_at: activity.published_at || null,
         attempts_count: activityAttempts.length,
-        can_attempt:
-          activityAttempts.length < Number(activity.max_attempts || 0) &&
-          activity.status === "published",
+        can_attempt: (() => {
+          const maxAttempts = Number(activity.max_attempts || 0);
+          const currentTime = new Date();
+          let isAvailable = true;
+          if (activity.available_from && currentTime < new Date(activity.available_from)) {
+            isAvailable = false;
+          }
+          if (activity.available_until && currentTime > new Date(activity.available_until)) {
+            isAvailable = false;
+          }
+          return (
+            isAvailable &&
+            activityAttempts.length < maxAttempts &&
+            activity.status === "published"
+          );
+        })(),
         latest_attempt_id: latestAttempt?.id || null,
         latest_attempt_status:
           (latestAttempt?.status as AttemptStatus) || null,
@@ -1282,10 +1167,42 @@ async function getStudentProgressFromSupabase(): Promise<StudentProgressDetailRe
   const { supabase, user } = context;
   const studentId = user.id;
 
-  const { data: kcRows, error: kcError } = await supabase
-    .from("knowledge_components")
-    .select("id, name, difficulty_prior, units(title, courses(id, name))")
-    .eq("is_active", true);
+  // 1. Scope KCs strictly to student's enrolled courses to prevent leaking other curricula
+  const { data: enrollmentRows, error: enrollmentError } = await supabase
+    .from("enrollments")
+    .select("section_id, sections(course_id)")
+    .eq("student_id", studentId);
+  if (enrollmentError) {
+    throw new Error(`No se pudieron cargar tus matrículas: ${enrollmentError.message}`);
+  }
+
+  const enrolledCourseIds = Array.from(
+    new Set(
+      (enrollmentRows || [])
+        .map((r: any) => firstRelation<any>(r.sections)?.course_id)
+        .filter(Boolean)
+    )
+  );
+
+  const { data: unitRows, error: unitError } = enrolledCourseIds.length
+    ? await supabase
+        .from("units")
+        .select("id")
+        .in("course_id", enrolledCourseIds)
+    : { data: [], error: null };
+  if (unitError) {
+    throw new Error(`No se pudieron cargar las unidades: ${unitError.message}`);
+  }
+
+  const enrolledUnitIds = (unitRows || []).map((u: any) => u.id);
+
+  const { data: kcRows, error: kcError } = enrolledUnitIds.length
+    ? await supabase
+        .from("knowledge_components")
+        .select("id, name, difficulty_prior, units(title, courses(id, name))")
+        .in("unit_id", enrolledUnitIds)
+        .eq("is_active", true)
+    : { data: [], error: null };
   if (kcError) {
     throw new Error(
       `No se pudieron cargar los componentes de conocimiento: ${kcError.message}`
@@ -1484,7 +1401,7 @@ async function listStudentCoursesFromSupabase(): Promise<StudentCourseItem[]> {
 
   const { data: enrollmentRows, error } = await supabase
     .from("enrollments")
-    .select("section_id, sections(id, name, course_id, courses(id, name, code, description))")
+    .select("section_id, sections(id, name, course_id, courses(id, name, code, description, is_active))")
     .eq("student_id", user.id);
 
   if (error) {
@@ -1495,7 +1412,7 @@ async function listStudentCoursesFromSupabase(): Promise<StudentCourseItem[]> {
     .map((row: any) => {
       const section = firstRelation<any>(row.sections);
       const course = firstRelation<any>(section?.courses);
-      if (!section || !course) return null;
+      if (!section || !course || course.is_active === false) return null;
       return {
         course_id: course.id,
         course_code: course.code || "",
@@ -1556,6 +1473,7 @@ async function listStudentActivitiesFromSupabase(): Promise<StudentActivityListI
         )
         .in("id", activityIds)
         .eq("status", "published")
+        .eq("is_active", true)
         .order("published_at", { ascending: false, nullsFirst: false })
     : { data: [], error: null };
   if (activityError) {
@@ -1578,14 +1496,32 @@ async function listStudentActivitiesFromSupabase(): Promise<StudentActivityListI
     attemptsByActivity.set(attempt.activity_id, list);
   }
 
+  const activityToSectionId = new Map<string, string>();
+  for (const row of activitySectionRows || []) {
+    if (row.activity_id && row.section_id) {
+      activityToSectionId.set(row.activity_id, row.section_id);
+    }
+  }
+
   return (activityRows || []).map((activity: any) => {
     const course = firstRelation<any>(activity.courses);
-    const section = Array.from(sectionById.values()).find(
-      (candidate: any) => candidate.course_id === activity.course_id
-    );
+    const assignedSectionId = activityToSectionId.get(activity.id);
+    const section = assignedSectionId ? sectionById.get(assignedSectionId) : null;
     const activityAttempts = attemptsByActivity.get(activity.id) || [];
     const latestAttempt = activityAttempts[0] || null;
     const maxAttempts = Number(activity.max_attempts || 0);
+    const now = new Date();
+    let isAvailable = true;
+    if (activity.available_from && now < new Date(activity.available_from)) {
+      isAvailable = false;
+    }
+    if (activity.available_until && now > new Date(activity.available_until)) {
+      isAvailable = false;
+    }
+    const canAttempt =
+      isAvailable &&
+      activityAttempts.length < maxAttempts &&
+      activity.status === "published";
 
     return {
       activity_id: activity.id,
@@ -1608,531 +1544,13 @@ async function listStudentActivitiesFromSupabase(): Promise<StudentActivityListI
       available_until: activity.available_until || null,
       published_at: activity.published_at || null,
       attempts_count: activityAttempts.length,
-      can_attempt:
-        activityAttempts.length < maxAttempts && activity.status === "published",
+      can_attempt: canAttempt,
       latest_attempt_id: latestAttempt?.id || null,
       latest_attempt_status: (latestAttempt?.status as AttemptStatus) || null,
       latest_score:
         typeof latestAttempt?.score === "number" ? latestAttempt.score : null,
     };
   });
-}
-
-async function getStudentActivityFromSupabase(
-  activityId: string
-): Promise<StudentActivityDetail> {
-  const context = await getStudentSupabaseContext();
-  const { supabase } = context;
-
-  const { data: act, error: activityError } = await supabase
-    .from("activities")
-    .select(
-      "id, course_id, title, description, activity_type, feedback_policy, status, max_attempts, time_limit_minutes, courses(id, name)"
-    )
-    .eq("id", activityId)
-    .eq("status", "published")
-    .maybeSingle();
-
-  if (activityError || !act) {
-    throw new Error(
-      activityError
-        ? `No se pudo cargar la actividad: ${activityError.message}`
-        : "La actividad no está disponible o no está publicada."
-    );
-  }
-
-  const { data: questionRows, error: questionError } = await supabase
-    .from("activity_questions")
-    .select(
-      "order_index, questions(id, question_text, question_type, question_options(id, option_text, order_index))"
-    )
-    .eq("activity_id", activityId)
-    .order("order_index", { ascending: true });
-  if (questionError) {
-    throw new Error(
-      `No se pudieron cargar las preguntas de la actividad: ${questionError.message}`
-    );
-  }
-
-  const questions: StudentQuestionItem[] = (questionRows || []).map((row: any) => {
-    const question = firstRelation<any>(row.questions);
-    return {
-      id: question?.id || "",
-      question_text: question?.question_text || "",
-      question_type: question?.question_type || "single_choice",
-      order_index: row.order_index,
-      options: (question?.question_options || [])
-        .slice()
-        .sort((x: any, y: any) => x.order_index - y.order_index)
-        .map((opt: any) => ({
-          id: opt.id,
-          option_text: opt.option_text,
-          order_index: opt.order_index,
-        })),
-    };
-  });
-
-  const course = firstRelation<any>(act.courses);
-
-  return {
-    activity_id: act.id,
-    title: resolveContentTitle(act),
-    description: act.description || null,
-    course_id: act.course_id,
-    course_name: resolveCourseName(course),
-    activity_type: (act.activity_type as ActivityType) || "practice",
-    feedback_policy:
-      (act.feedback_policy as FeedbackPolicy) ||
-      "immediate_with_explanation",
-    max_attempts: Number(act.max_attempts || 0),
-    time_limit_minutes:
-      typeof act.time_limit_minutes === "number" ? act.time_limit_minutes : null,
-    questions,
-    active_attempt_id: null,
-  };
-}
-
-async function startAttemptFromSupabase(
-  activityId: string,
-  idempotencyKey?: string
-): Promise<StartAttemptResponse> {
-  const context = await getStudentSupabaseContext();
-  const { supabase, user, profile } = context;
-
-  if (!profile?.tenant_id) {
-    throw new Error(
-      "No se pudo resolver tu institución. Contacta a tu docente para completar tu perfil."
-    );
-  }
-
-  const activity = await getStudentActivityFromSupabase(activityId);
-  if (activity.questions.length === 0) {
-    throw new Error("Esta actividad aún no tiene preguntas publicadas.");
-  }
-
-  const { data: existingAttempt, error: existingError } = await supabase
-    .from("quiz_attempts")
-    .select("id, attempt_number, started_at, status")
-    .eq("student_id", user.id)
-    .eq("activity_id", activityId)
-    .eq("status", "in_progress")
-    .maybeSingle();
-
-  if (existingError) {
-    throw new Error(
-      `No se pudo verificar el intento activo: ${existingError.message}`
-    );
-  }
-
-  if (existingAttempt) {
-    return {
-      attempt_id: existingAttempt.id,
-      activity_id: activityId,
-      attempt_number: Number(existingAttempt.attempt_number || 1),
-      status: "in_progress",
-      started_at: existingAttempt.started_at,
-      questions: activity.questions,
-    };
-  }
-
-  const { data: activitySectionRows, error: activitySectionError } = await supabase
-    .from("activity_sections")
-    .select("section_id")
-    .eq("activity_id", activityId);
-  if (activitySectionError) {
-    throw new Error(
-      `No se pudieron resolver las secciones de la actividad: ${activitySectionError.message}`
-    );
-  }
-
-  const sectionIds = (activitySectionRows || []).map(
-    (row: any) => row.section_id
-  );
-
-  const { data: enrollmentRows, error: enrollmentError } = sectionIds.length
-    ? await supabase
-        .from("enrollments")
-        .select("id")
-        .eq("student_id", user.id)
-        .in("section_id", sectionIds)
-        .limit(1)
-    : { data: [], error: null };
-  if (enrollmentError) {
-    throw new Error(
-      `No se pudo resolver tu matrícula: ${enrollmentError.message}`
-    );
-  }
-
-  const enrollment = (enrollmentRows || [])[0];
-  if (!enrollment) {
-    throw new Error(
-      "No estás matriculado en una sección asignada a esta actividad."
-    );
-  }
-
-  const { count, error: countError } = await supabase
-    .from("quiz_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("student_id", user.id)
-    .eq("activity_id", activityId);
-  if (countError) {
-    throw new Error(
-      `No se pudo calcular el número de intento: ${countError.message}`
-    );
-  }
-
-  const { data: createdAttempt, error: insertError } = await supabase
-    .from("quiz_attempts")
-    .insert({
-      tenant_id: profile.tenant_id,
-      enrollment_id: enrollment.id,
-      activity_id: activityId,
-      student_id: user.id,
-      attempt_number: (count || 0) + 1,
-      status: "in_progress",
-      started_at: new Date().toISOString(),
-      idempotency_key: idempotencyKey || crypto.randomUUID(),
-    })
-    .select("id, attempt_number, started_at")
-    .single();
-
-  if (insertError || !createdAttempt) {
-    throw new Error(
-      insertError
-        ? `No se pudo iniciar el intento: ${insertError.message}`
-        : "No se pudo iniciar el intento."
-    );
-  }
-
-  return {
-    attempt_id: createdAttempt.id,
-    activity_id: activityId,
-    attempt_number: Number(createdAttempt.attempt_number || 1),
-    status: "in_progress",
-    started_at: createdAttempt.started_at,
-    questions: activity.questions,
-  };
-}
-
-async function submitAnswerFromSupabase(
-  attemptId: string,
-  payload: SubmitAnswerPayload
-): Promise<SubmitAnswerResponse> {
-  const context = await getStudentSupabaseContext();
-  const { supabase, user, profile } = context;
-
-  if (!profile?.tenant_id) {
-    throw new Error("No se pudo resolver tu institución para registrar la respuesta.");
-  }
-
-  const { data: attempt, error: attemptError } = await supabase
-    .from("quiz_attempts")
-    .select("id, activity_id, attempt_number, student_id, status")
-    .eq("id", attemptId)
-    .maybeSingle();
-  if (attemptError || !attempt) {
-    throw new Error(
-      attemptError
-        ? `No se pudo validar el intento: ${attemptError.message}`
-        : "El intento no existe o no está disponible."
-    );
-  }
-
-  if (attempt.student_id && attempt.student_id !== user.id) {
-    throw new Error("No puedes registrar respuestas en un intento de otro estudiante.");
-  }
-
-  const { data: option, error: optionError } = await supabase
-    .from("question_options")
-    .select("id, is_correct, question_id, questions(id, explanation, knowledge_component_id)")
-    .eq("id", payload.selected_option_id)
-    .maybeSingle();
-  if (optionError || !option) {
-    throw new Error(
-      optionError
-        ? `No se pudo validar la opción seleccionada: ${optionError.message}`
-        : "La opción seleccionada no existe."
-    );
-  }
-
-  const question = firstRelation<any>(option.questions);
-  if (!question?.knowledge_component_id) {
-    throw new Error("La pregunta no tiene un componente de conocimiento asociado.");
-  }
-
-  const { count: previousAnswers, error: previousError } = await supabase
-    .from("answer_events")
-    .select("id", { count: "exact", head: true })
-    .eq("attempt_id", attemptId);
-  if (previousError) {
-    throw new Error(
-      `No se pudo calcular la secuencia de la respuesta: ${previousError.message}`
-    );
-  }
-
-  const { data: course } = await supabase
-    .from("activities")
-    .select("course_id")
-    .eq("id", attempt.activity_id)
-    .maybeSingle();
-
-  const eventId = crypto.randomUUID();
-  const key = idempotencyKeyOrDefault(
-    payload.idempotency_key,
-    crypto.randomUUID()
-  );
-
-  const { error: insertError } = await supabase.from("answer_events").insert({
-    id: eventId,
-    tenant_id: profile.tenant_id,
-    attempt_id: attemptId,
-    student_id: user.id,
-    question_id: payload.question_id,
-    knowledge_component_id: question.knowledge_component_id,
-    selected_option_id: payload.selected_option_id,
-    is_correct: option.is_correct === true,
-    attempt_number: Number(attempt.attempt_number || 1),
-    response_time_seconds: Math.max(0.01, payload.response_time_seconds),
-    idempotency_key: key,
-    activity_id: attempt.activity_id,
-    course_id: course?.course_id || null,
-    question_sequence: (previousAnswers || 0) + 1,
-  });
-
-  if (insertError) {
-    throw new Error(`No se pudo registrar tu respuesta: ${insertError.message}`);
-  }
-
-  const { data: attemptAnswers, error: scoreError } = await supabase
-    .from("answer_events")
-    .select("is_correct")
-    .eq("attempt_id", attemptId);
-  if (scoreError) {
-    throw new Error(
-      `No se pudo recalcular el puntaje del intento: ${scoreError.message}`
-    );
-  }
-
-  const scoreDisplay = observedPercentage(
-    (attemptAnswers || []).filter((answer: any) => answer.is_correct === true)
-      .length,
-    (attemptAnswers || []).length
-  );
-
-  return {
-    event_id: eventId,
-    attempt_id: attemptId,
-    question_id: payload.question_id,
-    is_correct: option.is_correct === true,
-    feedback: {
-      title:
-        option.is_correct === true
-          ? "¡Excelente razonamiento!"
-          : "Concepto por consolidar",
-      explanation:
-        typeof question.explanation === "string" && question.explanation.trim()
-          ? question.explanation
-          : null,
-    },
-    attempt_completed: false,
-    next_question_index: null,
-    current_score: scoreDisplay.value,
-  };
-}
-
-function idempotencyKeyOrDefault(
-  provided: string | undefined,
-  fallback: string
-): string {
-  if (typeof provided === "string" && provided.trim()) return provided.trim();
-  return fallback;
-}
-
-async function submitAttemptFromSupabase(
-  attemptId: string
-): Promise<SubmitAttemptResponse> {
-  const context = await getStudentSupabaseContext();
-  const { supabase, user } = context;
-
-  const { data: attempt, error: attemptError } = await supabase
-    .from("quiz_attempts")
-    .select("id, activity_id, student_id, status")
-    .eq("id", attemptId)
-    .maybeSingle();
-  if (attemptError || !attempt) {
-    throw new Error(
-      attemptError
-        ? `No se pudo validar el intento: ${attemptError.message}`
-        : "El intento no existe o no está disponible."
-    );
-  }
-
-  if (attempt.student_id && attempt.student_id !== user.id) {
-    throw new Error("No puedes finalizar un intento de otro estudiante.");
-  }
-
-  const { data: eventRows, error: eventError } = await supabase
-    .from("answer_events")
-    .select("is_correct")
-    .eq("attempt_id", attemptId);
-  if (eventError) {
-    throw new Error(`No se pudieron leer tus respuestas: ${eventError.message}`);
-  }
-
-  const events = eventRows || [];
-  const summary = summarizeAttempt({ events });
-  if (!summary.has_evidence) {
-    throw new Error(
-      "Este intento no tiene respuestas registradas, por lo que no genera un resultado."
-    );
-  }
-
-  const completedAt = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from("quiz_attempts")
-    .update({
-      status: "completed",
-      completed_at: completedAt,
-      submitted_at: completedAt,
-      score: summary.score,
-      total_questions: summary.total_questions,
-      correct_answers: summary.correct_answers,
-    })
-    .eq("id", attemptId);
-  if (updateError) {
-    throw new Error(`No se pudo finalizar el intento: ${updateError.message}`);
-  }
-
-  return {
-    attempt_id: attemptId,
-    activity_id: attempt.activity_id,
-    status: "completed",
-    score: summary.score ?? 0,
-    total_questions: summary.total_questions,
-    correct_answers: summary.correct_answers,
-    completed_at: completedAt,
-  };
-}
-
-async function getAttemptResultsFromSupabase(
-  attemptId: string
-): Promise<AttemptResultsResponse> {
-  const context = await getStudentSupabaseContext();
-  const { supabase, user, profile } = context;
-
-  const { data: attempt, error: attemptError } = await supabase
-    .from("quiz_attempts")
-    .select(
-      "id, activity_id, student_id, started_at, completed_at, score, total_questions, correct_answers, status, activities(id, title, course_id, courses(id, name))"
-    )
-    .eq("id", attemptId)
-    .maybeSingle();
-  if (attemptError || !attempt) {
-    throw new Error(
-      attemptError
-        ? `No se pudo cargar el intento: ${attemptError.message}`
-        : "El intento no existe o no está disponible."
-    );
-  }
-
-  if (attempt.student_id && attempt.student_id !== user.id) {
-    throw new Error("No puedes consultar los resultados de otro estudiante.");
-  }
-
-  const { data: eventRows, error: eventError } = await supabase
-    .from("answer_events")
-    .select(
-      "question_id, is_correct, selected_option_id, questions(id, question_text, explanation, knowledge_component_id, knowledge_components(id, name), question_options(id, option_text, is_correct, order_index))"
-    )
-    .eq("attempt_id", attemptId)
-    .order("event_timestamp", { ascending: true });
-  if (eventError) {
-    throw new Error(`No se pudieron cargar tus respuestas: ${eventError.message}`);
-  }
-
-  const events = eventRows || [];
-  const summary =
-    events.length > 0
-      ? summarizeAttempt({ events })
-      : summarizeAttempt({
-          declaredTotal: attempt.total_questions,
-          declaredCorrect: attempt.correct_answers,
-        });
-
-  if (!summary.has_evidence) {
-    throw new Error(
-      "Este intento no tiene respuestas registradas, por lo que aún no genera resultados."
-    );
-  }
-
-  const questions: AttemptQuestionReview[] = events.map((event: any) => {
-    const question = firstRelation<any>(event.questions);
-    const options = question?.question_options || [];
-    const selectedOption = options.find(
-      (option: any) => option.id === event.selected_option_id
-    );
-    const correctOption = options.find((option: any) => option.is_correct === true);
-    const kc = firstRelation<any>(question?.knowledge_components);
-
-    return {
-      question_id: event.question_id,
-      question_text: question?.question_text || "Pregunta no disponible",
-      knowledge_component_id: question?.knowledge_component_id || "",
-      knowledge_component_name: resolveKnowledgeComponentName(kc),
-      selected_option_id: event.selected_option_id || null,
-      selected_option_text: selectedOption?.option_text || "Sin respuesta registrada",
-      is_correct: event.is_correct === true,
-      correct_option_id: correctOption?.id || null,
-      correct_option_text: correctOption?.option_text || null,
-      explanation:
-        typeof question?.explanation === "string" ? question.explanation : null,
-    };
-  });
-
-  const kcGroups = new Map<
-    string,
-    { name: string; total: number; correct: number }
-  >();
-  for (const question of questions) {
-    const current = kcGroups.get(question.knowledge_component_id) || {
-      name: question.knowledge_component_name,
-      total: 0,
-      correct: 0,
-    };
-    current.total += 1;
-    if (question.is_correct) current.correct += 1;
-    kcGroups.set(question.knowledge_component_id, current);
-  }
-
-  const kc_summaries: KCResultSummary[] = Array.from(kcGroups.entries()).map(
-    ([kcId, group]) => ({
-      knowledge_component_id: kcId,
-      knowledge_component_name: group.name,
-      total_questions: group.total,
-      correct_answers: group.correct,
-      mastery_rate: Number(((group.correct / group.total) * 100).toFixed(1)),
-    })
-  );
-
-  const activity = firstRelation<any>(attempt.activities);
-  const course = firstRelation<any>(activity?.courses);
-
-  return {
-    attempt_id: attemptId,
-    activity_id: attempt.activity_id,
-    activity_title: resolveContentTitle(activity),
-    course_name: resolveCourseName(course),
-    student_id: user.id,
-    student_name:
-      profile?.full_name || studentDisplayName(context),
-    started_at: attempt.started_at,
-    completed_at: attempt.completed_at,
-    score: summary.score ?? 0,
-    total_questions: summary.total_questions,
-    correct_answers: summary.correct_answers,
-    questions,
-    kc_summaries,
-  };
 }
 
 export const studentLearningApi = learningApi;

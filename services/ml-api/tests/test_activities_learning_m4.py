@@ -1496,3 +1496,126 @@ async def test_33_student_answer_modification_and_in_progress_guard(seed_canonic
         assert q_stat["correct_answers"] == 1
         assert q_stat["accuracy_rate"] == 100.0
 
+
+# ============================================================================
+# 34: ENDURECIMIENTO DE REGLAS DE NEGOCIO AUTORITATIVAS (PHASE P0-1)
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_34_learning_authoritative_business_rules(seed_canonical_questions):
+    """Verify authoritative business rules in FastAPI backend:
+    1. Completed attempt: rejects additional answers with HTTP 409 Conflict.
+    2. Max attempts exhausted: rejects starting a new attempt with HTTP 403 Forbidden.
+    3. Duplicate answer submission: idempotent return without duplicate answer_events.
+    4. In-progress attempt: rejects viewing results with HTTP 403 Forbidden.
+    """
+    data = seed_canonical_questions
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        teacher_headers = make_headers(TEACHER_A, TENANT_A, "teacher")
+        student_headers = make_headers(STUDENT_A1, TENANT_A, "student")
+
+        # Create activity with max_attempts = 1
+        res_create = await client.post(
+            "/api/v1/activities",
+            headers=teacher_headers,
+            json={
+                "title": "Actividad P0-1 Reglas Autoritativas",
+                "course_id": COURSE_A1,
+                "section_ids": [SECTION_A1],
+                "question_ids": [str(data["q1"]["id"])],
+                "max_attempts": 1,
+                "feedback_policy": "immediate_with_explanation",
+            },
+        )
+        assert res_create.status_code == 201
+        act_id = res_create.json()["id"]
+        await client.post(f"/api/v1/activities/{act_id}/publish", headers=teacher_headers)
+
+        # 1. Start attempt #1
+        res_att1 = await client.post(
+            f"/api/v1/students/me/activities/{act_id}/attempts",
+            headers=student_headers,
+            json={},
+        )
+        assert res_att1.status_code == 201
+        att1_id = res_att1.json()["attempt_id"]
+
+        # 2. In-progress attempt guard: student cannot view results while attempt is in_progress
+        res_premature = await client.get(
+            f"/api/v1/students/me/attempts/{att1_id}/results",
+            headers=student_headers,
+        )
+        assert res_premature.status_code == 403
+        premature_detail = str(res_premature.json().get("detail", ""))
+        assert "in-progress" in premature_detail.lower()
+
+        # 3. Submit answer with strict idempotency
+        idemp_key = str(uuid4())
+        res_ans = await client.post(
+            f"/api/v1/students/me/attempts/{att1_id}/answers",
+            headers={**student_headers, "X-Idempotency-Key": idemp_key},
+            json={
+                "question_id": str(data["q1"]["id"]),
+                "selected_option_id": str(data["q1"]["opt_correct"]),
+                "response_time_seconds": 4.0,
+            },
+        )
+        assert res_ans.status_code == 201
+        first_event_id = res_ans.json()["event_id"]
+
+        # 4. Duplicate answer with same key returns original response and does NOT insert duplicate
+        res_ans_dup = await client.post(
+            f"/api/v1/students/me/attempts/{att1_id}/answers",
+            headers={**student_headers, "X-Idempotency-Key": idemp_key},
+            json={
+                "question_id": str(data["q1"]["id"]),
+                "selected_option_id": str(data["q1"]["opt_correct"]),
+                "response_time_seconds": 4.0,
+            },
+        )
+        assert res_ans_dup.status_code == 201
+        assert res_ans_dup.json()["event_id"] == first_event_id
+
+        # Verify in database that only ONE answer_event exists for this attempt
+        pool = await get_db_pool(dsn=TEST_DB_URL)
+        async with pool.acquire() as conn:
+            cnt = await conn.fetchval(
+                "SELECT COUNT(*) FROM answer_events WHERE attempt_id = $1;",
+                UUID(att1_id),
+            )
+            assert cnt == 1
+
+        # 5. Submit attempt #1 (finalize)
+        res_sub = await client.post(
+            f"/api/v1/students/me/attempts/{att1_id}/submit",
+            headers=student_headers,
+        )
+        assert res_sub.status_code == 200
+        assert res_sub.json()["status"] == "completed"
+
+        # 6. Completed attempt guard: cannot submit additional answers (returns 409 Conflict)
+        res_ans_post_complete = await client.post(
+            f"/api/v1/students/me/attempts/{att1_id}/answers",
+            headers=student_headers,
+            json={
+                "question_id": str(data["q1"]["id"]),
+                "selected_option_id": str(data["q1"]["opt_correct"]),
+                "response_time_seconds": 2.0,
+            },
+        )
+        assert res_ans_post_complete.status_code == 409
+        complete_detail = str(res_ans_post_complete.json().get("detail", ""))
+        assert "already completed" in complete_detail.lower()
+
+        # 7. Max attempts exhausted: cannot start attempt #2 when max_attempts = 1 (returns 403 Forbidden)
+        res_att2 = await client.post(
+            f"/api/v1/students/me/activities/{act_id}/attempts",
+            headers=student_headers,
+            json={},
+        )
+        assert res_att2.status_code == 403
+        max_att_detail = str(res_att2.json().get("detail", ""))
+        assert "límite máximo de intentos permitidos" in max_att_detail.lower()
+
+
