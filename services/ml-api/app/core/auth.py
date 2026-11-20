@@ -16,7 +16,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import asyncpg
 import jwt
@@ -67,11 +67,14 @@ def decode_supabase_jwt(token: str) -> dict[str, Any]:
 
     if algorithm == "HS256":
         if settings.SUPABASE_JWT_SECRET:
-            return jwt.decode(
-                token,
-                settings.SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                options={"verify_aud": False, "verify_exp": True},
+            return cast(
+                dict[str, Any],
+                jwt.decode(
+                    token,
+                    settings.SUPABASE_JWT_SECRET,
+                    algorithms=["HS256"],
+                    options={"verify_aud": False, "verify_exp": True},
+                ),
             )
         if is_prod:
             raise HTTPException(
@@ -85,18 +88,24 @@ def decode_supabase_jwt(token: str) -> dict[str, Any]:
                 },
             )
         # Development/testing without configured secret: inspect claims only.
-        return jwt.decode(
-            token,
-            options={"verify_signature": False, "verify_exp": True},
+        return cast(
+            dict[str, Any],
+            jwt.decode(
+                token,
+                options={"verify_signature": False, "verify_exp": True},
+            ),
         )
 
     if algorithm in _ASYMMETRIC_ALGORITHMS:
         signing_key = _get_jwks_signing_key(token)
-        return jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=[algorithm],
-            options={"verify_aud": False, "verify_exp": True},
+        return cast(
+            dict[str, Any],
+            jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=[algorithm],
+                options={"verify_aud": False, "verify_exp": True},
+            ),
         )
 
     raise jwt.InvalidAlgorithmError(
