@@ -20,17 +20,6 @@
     "NEXT_PUBLIC_API_URL": "https://54wsiki2ruyk2r5l3xvasykqo40oxokx.lambda-url.us-east-2.on.aws",
     "NEXT_PUBLIC_ENABLE_DEMO_AUTH": "false"
   },
-  "env": {
-    "preview": {
-      "vars": {
-        "NEXT_PUBLIC_SUPABASE_URL": "https://oqjahhbqcethwgpufgnm.supabase.co",
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_u5AIwepBNqqKzQPxVtg5QQ_d_IQ3yrX",
-        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_u5AIwepBNqqKzQPxVtg5QQ_d_IQ3yrX",
-        "NEXT_PUBLIC_API_URL": "https://54wsiki2ruyk2r5l3xvasykqo40oxokx.lambda-url.us-east-2.on.aws",
-        "NEXT_PUBLIC_ENABLE_DEMO_AUTH": "true"
-      }
-    }
-  },
   "observability": {
     "enabled": true
   }
