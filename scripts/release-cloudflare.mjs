@@ -45,10 +45,10 @@ function parseCliArgs() {
   return { dryRun, publish, allowDirty, skipBuild };
 }
 
-function runCommand(command, cwd = REPO_ROOT) {
+function runCommand(command, cwd = REPO_ROOT, extraEnv = {}) {
   console.log(`\n▶ [EXEC] ${command} (in ${cwd === REPO_ROOT ? "." : "apps/web"})`);
   try {
-    execSync(command, { cwd, stdio: "inherit" });
+    execSync(command, { cwd, stdio: "inherit", env: { ...process.env, ...extraEnv } });
     return true;
   } catch (err) {
     console.error(`❌ Command failed: ${command}`);
@@ -166,9 +166,11 @@ async function main() {
 
   const wranglerCmd = wranglerArgs.join(" ");
 
+  const deployEnv = { OPEN_NEXT_ALREADY_BUILT: "1" };
+
   if (dryRun) {
     console.log("🛡️  Executing publication in DRY-RUN mode...");
-    const deploySuccess = runCommand(wranglerCmd, WEB_DIR);
+    const deploySuccess = runCommand(wranglerCmd, WEB_DIR, deployEnv);
     if (!deploySuccess) {
       console.error("❌ Wrangler dry-run check failed.");
       process.exit(1);
@@ -180,7 +182,7 @@ async function main() {
     console.log("===============================================================================\n");
   } else {
     console.log("🚨 EXECUTING ACTUAL CLOUDFLARE PRODUCTION DEPLOYMENT...");
-    const deploySuccess = runCommand(wranglerCmd, WEB_DIR);
+    const deploySuccess = runCommand(wranglerCmd, WEB_DIR, deployEnv);
     if (!deploySuccess) {
       console.error("❌ Wrangler production deployment FAILED.");
       process.exit(1);

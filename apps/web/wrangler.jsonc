@@ -11,7 +11,7 @@
     "binding": "ASSETS"
   },
   "build": {
-    "command": "npm run build:cloudflare"
+    "command": "test -n \"$OPEN_NEXT_ALREADY_BUILT\" || npm run build:cloudflare"
   },
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://oqjahhbqcethwgpufgnm.supabase.co",
