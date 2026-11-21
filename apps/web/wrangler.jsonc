@@ -10,6 +10,9 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "build": {
+    "command": "npm run build:cloudflare"
+  },
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://oqjahhbqcethwgpufgnm.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_u5AIwepBNqqKzQPxVtg5QQ_d_IQ3yrX",
