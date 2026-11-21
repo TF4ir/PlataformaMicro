@@ -12,7 +12,18 @@
  * 6. Teacher access: authorized teacher receives HTTP 200 on teacher dashboard.
  * 7. Role boundary: student attempting teacher action receives HTTP 403 Forbidden.
  * 8. Role boundary: teacher attempting student action receives HTTP 403 Forbidden.
- * 9. Explicit documentation of test accounts and headless browser boundary.
+ * 9. Explicit documentation of test accounts, environment variable configuration,
+ *    and headless browser boundary.
+ *
+ * Security & CI Boundary:
+ * To prevent unintentional calls to production services or dependency on real account
+ * credentials during automated CI runs (npm test), live integration tests are disabled
+ * by default. To enable them, provide the required environment variables:
+ *
+ *   ENABLE_REAL_AUTH_TESTS=true \
+ *   E2E_STUDENT_PASSWORD="<student-password>" \
+ *   E2E_TEACHER_PASSWORD="<teacher-password>" \
+ *   npm test
  */
 
 import { test, describe, before } from "node:test";
@@ -34,17 +45,27 @@ const LAMBDA_API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "https://54wsiki2ruyk2r5l3xvasykqo40oxokx.lambda-url.us-east-2.on.aws";
 
-// Test-only seed credentials
+// Configuration for real live authentication
+const ENABLE_REAL_AUTH_TESTS =
+  process.env.ENABLE_REAL_AUTH_TESTS === "true" ||
+  process.env.ENABLE_REAL_AUTH_TESTS === "1";
+
+const E2E_STUDENT_PASSWORD = process.env.E2E_STUDENT_PASSWORD || "";
+const E2E_TEACHER_PASSWORD = process.env.E2E_TEACHER_PASSWORD || "";
+
+const canRunLiveTests =
+  ENABLE_REAL_AUTH_TESTS &&
+  Boolean(E2E_STUDENT_PASSWORD && E2E_TEACHER_PASSWORD);
+
+// Pilot test account identities (usernames only, passwords supplied via env)
 const TEST_STUDENT = {
-  email: "lucia.mendoza@nexo.edu.pe",
-  password: "Nexo2026!",
+  email: process.env.E2E_STUDENT_EMAIL || "lucia.mendoza@nexo.edu.pe",
   expectedRole: "student",
   expectedId: "e0000000-0000-0000-0000-000000000001",
 };
 
 const TEST_TEACHER = {
-  email: "ana.garcia@nexo.edu.pe",
-  password: "Nexo2026!",
+  email: process.env.E2E_TEACHER_EMAIL || "ana.garcia@nexo.edu.pe",
   expectedRole: "teacher",
   expectedId: "d0000000-0000-0000-0000-000000000001",
 };
@@ -57,11 +78,21 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
   let teacherToken = "";
 
   before(async () => {
-    // 1. Probe candidate auth endpoints (configured, then local, then remote)
+    // Probe candidate auth endpoints ONLY when real auth tests are explicitly enabled
+    if (!canRunLiveTests) {
+      return;
+    }
+
     const candidates = [
       { url: SUPABASE_AUTH_URL, key: SUPABASE_ANON_KEY },
-      { url: LOCAL_AUTH_URL, key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0" },
-      { url: REMOTE_AUTH_URL, key: "sb_publishable_u5AIwepBNqqKzQPxVtg5QQ_d_IQ3yrX" },
+      {
+        url: LOCAL_AUTH_URL,
+        key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0",
+      },
+      {
+        url: REMOTE_AUTH_URL,
+        key: "sb_publishable_u5AIwepBNqqKzQPxVtg5QQ_d_IQ3yrX",
+      },
     ];
 
     for (const candidate of candidates) {
@@ -82,8 +113,15 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
     }
   });
 
-  // 1. Authentication: Student login with valid credentials
+  // 1. Authentication: Student login with credentials from environment
   test("1. Authentication: student authenticates against GoTrue and receives valid JWT", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip(
+        "Real auth tests disabled. Set ENABLE_REAL_AUTH_TESTS=true and provide E2E_STUDENT_PASSWORD to run."
+      );
+      return;
+    }
+
     if (!isAuthAvailable) {
       t.skip("No reachable Supabase Auth endpoint");
       return;
@@ -97,12 +135,16 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
       },
       body: JSON.stringify({
         email: TEST_STUDENT.email,
-        password: TEST_STUDENT.password,
+        password: E2E_STUDENT_PASSWORD,
       }),
       signal: AbortSignal.timeout(10000),
     });
 
-    assert.equal(response.status, 200, "Student authentication must succeed with HTTP 200");
+    assert.equal(
+      response.status,
+      200,
+      `Student authentication failed with HTTP ${response.status}`
+    );
     const data = await response.json();
 
     assert.ok(data.access_token, "Must return access_token");
@@ -113,8 +155,15 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
     studentToken = data.access_token;
   });
 
-  // 2. Authentication: Teacher login with valid credentials
+  // 2. Authentication: Teacher login with credentials from environment
   test("2. Authentication: teacher authenticates against GoTrue and receives valid JWT", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip(
+        "Real auth tests disabled. Set ENABLE_REAL_AUTH_TESTS=true and provide E2E_TEACHER_PASSWORD to run."
+      );
+      return;
+    }
+
     if (!isAuthAvailable) {
       t.skip("No reachable Supabase Auth endpoint");
       return;
@@ -128,12 +177,16 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
       },
       body: JSON.stringify({
         email: TEST_TEACHER.email,
-        password: TEST_TEACHER.password,
+        password: E2E_TEACHER_PASSWORD,
       }),
       signal: AbortSignal.timeout(10000),
     });
 
-    assert.equal(response.status, 200, "Teacher authentication must succeed with HTTP 200");
+    assert.equal(
+      response.status,
+      200,
+      `Teacher authentication failed with HTTP ${response.status}`
+    );
     const data = await response.json();
 
     assert.ok(data.access_token, "Must return access_token");
@@ -146,6 +199,13 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
 
   // 3. Authentication: Invalid credentials rejection
   test("3. Authentication: invalid credentials rejected with HTTP 400", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip(
+        "Real auth tests disabled. Set ENABLE_REAL_AUTH_TESTS=true and test credentials to run."
+      );
+      return;
+    }
+
     if (!isAuthAvailable) {
       t.skip("No reachable Supabase Auth endpoint");
       return;
@@ -159,7 +219,7 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
       },
       body: JSON.stringify({
         email: TEST_STUDENT.email,
-        password: "WrongPassword123!",
+        password: "IntentionalInvalidPassword_SecurityCheck_999!",
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -170,7 +230,14 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
   });
 
   // 4. Route Protection: Unauthenticated request rejected by API
-  test("4. Route protection: API endpoint rejects request without Bearer token with 401", async () => {
+  test("4. Route protection: API endpoint rejects request without Bearer token with 401", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip(
+        "Real auth tests disabled. Set ENABLE_REAL_AUTH_TESTS=true to run live endpoint checks."
+      );
+      return;
+    }
+
     const response = await fetch(`${LAMBDA_API_URL}/api/v1/students/me/dashboard`, {
       signal: AbortSignal.timeout(15000),
     });
@@ -182,6 +249,11 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
 
   // 5. Student Access: Authorized student accesses student dashboard
   test("5. Student access: authorized student retrieves student dashboard with HTTP 200", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip("Real auth tests disabled.");
+      return;
+    }
+
     if (!studentToken) {
       t.skip("Student token not available");
       return;
@@ -203,6 +275,11 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
 
   // 6. Teacher Access: Authorized teacher accesses teacher dashboard
   test("6. Teacher access: authorized teacher retrieves teacher dashboard with HTTP 200", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip("Real auth tests disabled.");
+      return;
+    }
+
     if (!teacherToken) {
       t.skip("Teacher token not available");
       return;
@@ -223,6 +300,11 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
 
   // 7. Role Boundary: Student restricted from teacher-specific endpoints
   test("7. Role boundary: student token attempting teacher action is rejected with HTTP 403", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip("Real auth tests disabled.");
+      return;
+    }
+
     if (!studentToken) {
       t.skip("Student token not available");
       return;
@@ -242,6 +324,11 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
 
   // 8. Role Boundary: Teacher restricted from student-specific endpoints
   test("8. Role boundary: teacher token attempting student action is rejected with HTTP 403", async (t) => {
+    if (!canRunLiveTests) {
+      t.skip("Real auth tests disabled.");
+      return;
+    }
+
     if (!teacherToken) {
       t.skip("Teacher token not available");
       return;
@@ -266,7 +353,14 @@ describe("Authenticated Server Integration: Auth, Roles & Route Protection", () 
     // package not included in production dependencies.
     // Real server-protocol integration (live HTTP token negotiation, claims verification,
     // route protection, student/teacher access, and cross-role denial) is 100% verified.
+    //
+    // Environment Variables Specification:
+    // - ENABLE_REAL_AUTH_TESTS: set to "true" to enable live GoTrue & Lambda network verification.
+    // - E2E_STUDENT_PASSWORD: password for student pilot account.
+    // - E2E_TEACHER_PASSWORD: password for teacher pilot account.
+    // In CI or environments without these variables, live network tests are cleanly skipped.
     assert.strictEqual(typeof TEST_STUDENT.email, "string");
     assert.strictEqual(typeof TEST_TEACHER.email, "string");
+    assert.strictEqual(typeof canRunLiveTests, "boolean");
   });
 });
