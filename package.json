@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
     "dev:web": "npm --prefix apps/web run dev",
-    "build": "npm --prefix apps/web run build",
+    "build": "npm --prefix apps/web run build:cloudflare",
     "build:cloudflare": "npm --prefix apps/web run build:cloudflare",
     "build:web": "npm --prefix apps/web run build",
     "start": "npm --prefix apps/web run start",

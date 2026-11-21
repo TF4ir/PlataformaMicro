@@ -63,6 +63,20 @@ jobs:
   backend:
     name: Backend Quality, Typing & Automated Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: plataformamicro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,6 +100,11 @@ jobs:
       - name: Mypy Strict Type Check
         run: |
           mypy --config-file services/ml-api/pyproject.toml services/ml-api/app
+
+      - name: Initialize Test Database Schema
+        run: |
+          which psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d plataformamicro_test -f services/ml-api/tests/test_db_schema.sql
 
       - name: Run Backend Pytest Suite
         run: |
