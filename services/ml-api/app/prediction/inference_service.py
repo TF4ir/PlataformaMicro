@@ -15,6 +15,7 @@ from typing import Any
 
 import asyncpg
 
+from app.core.config import settings
 from app.prediction.history_builder import (
     UnifiedHistoryBuilder,
 )
@@ -59,11 +60,12 @@ class RetentionInferenceService:
         student_id: uuid.UUID,
         tenant_id: uuid.UUID,
         knowledge_component_id: uuid.UUID | None = None,
-        tau: float = 0.650,
+        tau: float | None = None,
         horizons_hours: list[int] | None = None,
         persist_predictions: bool = True,
     ) -> StudentRetentionSummaryResponse:
         """Evaluate retention for all accessible KCs for the student."""
+        effective_tau = tau if tau is not None else settings.DEFAULT_TAU_THRESHOLD
         if horizons_hours is None:
             # Default evaluation horizons: 24h (1d), 72h (3d), 168h (7d / primary research horizon)
             horizons_hours = [24, 72, 168]
@@ -84,6 +86,7 @@ class RetentionInferenceService:
 
         kc_predictions: list[KCRetentionPrediction] = []
         prediction_inserts: list[dict[str, Any]] = []
+        knowledge_state_inserts: list[dict[str, Any]] = []
 
         for kc_id, summary in histories.items():
             total_interactions = summary.total_exposures + summary.total_retrieval_attempts
@@ -117,7 +120,7 @@ class RetentionInferenceService:
                         predicted_forgetting_time_seconds=None,
                         predicted_forgetting_time_days=None,
                         recommended_review_time=None,
-                        tau_threshold=tau,
+                        tau_threshold=effective_tau,
                         model_name="rule_based_fallback",
                         model_version="1.0.0",
                         availability_status=kc_status,
@@ -127,6 +130,35 @@ class RetentionInferenceService:
                         total_retrieval_attempts=summary.total_retrieval_attempts,
                         last_interaction_at=summary.last_interaction_at,
                     )
+                )
+
+                prediction_inserts.append(
+                    {
+                        "id": uuid.uuid4(),
+                        "tenant_id": tenant_id,
+                        "student_id": student_id,
+                        "knowledge_component_id": kc_id,
+                        "prediction_horizon_hours": 168,
+                        "predicted_recall_probability": round(max(0.0, min(1.0, p_current)), 3),
+                        "estimated_risk": round(max(0.0, min(1.0, risk_current)), 3),
+                        "risk_level": _categorize_risk(p_current).value,
+                        "input_event_cutoff": cutoff_time,
+                        "prediction_status": "degraded_fallback",
+                        "predicted_forgetting_time_seconds": None,
+                        "tau_threshold": round(max(0.0, min(1.0, effective_tau)), 3),
+                    }
+                )
+
+                knowledge_state_inserts.append(
+                    {
+                        "tenant_id": tenant_id,
+                        "student_id": student_id,
+                        "knowledge_component_id": kc_id,
+                        "p_mastery": round(max(0.0, min(1.0, p_current)), 3),
+                        "confidence": round(min(1.0, max(0.1, total_interactions / 10.0)), 3),
+                        "total_interactions": total_interactions,
+                        "last_updated_at": cutoff_time,
+                    }
                 )
                 continue
 
@@ -172,7 +204,7 @@ class RetentionInferenceService:
             t_crit_sec = model.predict_forgetting_time(
                 student_id=str(student_id),
                 kc_id=str(kc_id),
-                tau=tau,
+                tau=effective_tau,
                 history=summary.interaction_events,
                 reference_time=cutoff_time,
             )
@@ -198,7 +230,7 @@ class RetentionInferenceService:
                 predicted_forgetting_time_seconds=t_crit_sec,
                 predicted_forgetting_time_days=t_crit_days,
                 recommended_review_time=review_time,
-                tau_threshold=tau,
+                tau_threshold=effective_tau,
                 model_name=metadata.model_name if metadata else model.name,
                 model_version=metadata.model_version if metadata else model.version,
                 availability_status=kc_status,
@@ -225,19 +257,34 @@ class RetentionInferenceService:
                     "student_id": student_id,
                     "knowledge_component_id": kc_id,
                     "prediction_horizon_hours": primary_horizon,
-                    "predicted_recall_probability": p_primary,
-                    "estimated_risk": round(1.0 - p_primary, 4),
+                    "predicted_recall_probability": round(max(0.0, min(1.0, p_primary)), 3),
+                    "estimated_risk": round(max(0.0, min(1.0, 1.0 - p_primary)), 3),
                     "risk_level": _categorize_risk(p_primary).value,
                     "input_event_cutoff": cutoff_time,
                     "prediction_status": "valid" if kc_status == ModelAvailabilityStatus.EMPIRICAL_MODEL_READY else "degraded_fallback",
                     "predicted_forgetting_time_seconds": t_crit_sec,
-                    "tau_threshold": tau,
+                    "tau_threshold": round(max(0.0, min(1.0, effective_tau)), 3),
                 }
             )
 
-        # 3. Persist predictions asynchronously
-        if persist_predictions and prediction_inserts:
-            await self._persist_predictions_batch(pool, prediction_inserts)
+            knowledge_state_inserts.append(
+                {
+                    "tenant_id": tenant_id,
+                    "student_id": student_id,
+                    "knowledge_component_id": kc_id,
+                    "p_mastery": round(max(0.0, min(1.0, p_now)), 3),
+                    "confidence": round(min(1.0, max(0.1, total_interactions / 10.0)), 3),
+                    "total_interactions": total_interactions,
+                    "last_updated_at": cutoff_time,
+                }
+            )
+
+        # 3. Persist predictions and knowledge states asynchronously
+        if persist_predictions:
+            if prediction_inserts:
+                await self._persist_predictions_batch(pool, prediction_inserts)
+            if knowledge_state_inserts:
+                await self._persist_knowledge_states_batch(pool, knowledge_state_inserts)
 
         audit_msg = (
             f"Evaluated {len(kc_predictions)} KCs at {cutoff_time.isoformat()} with {global_status.value}."
@@ -284,3 +331,37 @@ class RetentionInferenceService:
                     )
                 except (asyncpg.PostgresError, OSError) as exc:
                     logger.warning("Non-blocking prediction telemetry persistence error: %s", exc)
+
+    async def _persist_knowledge_states_batch(
+        self,
+        pool: asyncpg.Pool,
+        records: list[dict[str, Any]],
+    ) -> None:
+        """Upsert student_knowledge_states table with canonical lock ordering to eliminate deadlocks."""
+        sorted_records = sorted(records, key=lambda x: str(x["knowledge_component_id"]))
+        async with pool.acquire() as conn:
+            for r in sorted_records:
+                try:
+                    await conn.execute(
+                        """
+                        INSERT INTO student_knowledge_states (
+                            tenant_id, student_id, knowledge_component_id,
+                            p_mastery, confidence, total_interactions, last_updated_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        ON CONFLICT (student_id, knowledge_component_id)
+                        DO UPDATE SET
+                            p_mastery = EXCLUDED.p_mastery,
+                            confidence = EXCLUDED.confidence,
+                            total_interactions = EXCLUDED.total_interactions,
+                            last_updated_at = EXCLUDED.last_updated_at;
+                        """,
+                        r["tenant_id"],
+                        r["student_id"],
+                        r["knowledge_component_id"],
+                        r["p_mastery"],
+                        r["confidence"],
+                        r["total_interactions"],
+                        r["last_updated_at"],
+                    )
+                except (asyncpg.PostgresError, OSError) as exc:
+                    logger.warning("Non-blocking student_knowledge_states persistence error: %s", exc)

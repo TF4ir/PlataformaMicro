@@ -9,12 +9,22 @@
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
     "dev:web": "npm --prefix apps/web run dev",
-    "build": "npm --prefix apps/web run build",
+    "build": "npm --prefix apps/web run build:cloudflare",
     "build:cloudflare": "npm --prefix apps/web run build:cloudflare",
     "build:web": "npm --prefix apps/web run build",
     "start": "npm --prefix apps/web run start",
     "type-check": "npm --prefix apps/web run type-check",
     "test": "npm --prefix apps/web run test",
+    "lint": "npm --prefix apps/web run lint",
+    "verify:artifact": "node scripts/verify-release-artifact.mjs",
+    "release:cloudflare": "node scripts/release-cloudflare.mjs",
+    "release:cloudflare:dry-run": "node scripts/release-cloudflare.mjs --dry-run",
+    "deploy": "npm --prefix apps/web run deploy",
+    "deploy:dry-run": "node scripts/release-cloudflare.mjs --dry-run",
+    "deploy:cloudflare": "node scripts/release-cloudflare.mjs",
+    "deploy:cloudflare:dry-run": "node scripts/release-cloudflare.mjs --dry-run",
+    "openapi:check": "python3 scripts/sync_openapi.py --check",
+    "openapi:sync": "python3 scripts/sync_openapi.py",
     "verify:ui": "python3 scripts/verify-phase1-ui.py"
   }
 }

@@ -95,22 +95,35 @@ class UnifiedHistoryBuilder:
             reference_time = datetime.now(UTC)
 
         async with pool.acquire() as conn:
-            # 1. Fetch accessible KCs for the student's enrolled courses
+            # 1. Fetch accessible KCs for the student's enrolled courses or practiced events
             kc_query = """
                 SELECT DISTINCT 
                     kc.id AS kc_id,
                     kc.name AS kc_name,
                     kc.difficulty_prior
-                FROM enrollments e
-                JOIN sections s ON e.section_id = s.id
-                JOIN units u ON s.course_id = u.course_id
-                JOIN knowledge_components kc ON u.id = kc.unit_id
-                WHERE e.student_id = $1 AND e.tenant_id = $2
+                FROM knowledge_components kc
+                WHERE kc.id IN (
+                    SELECT kc2.id
+                    FROM enrollments e
+                    JOIN sections s ON e.section_id = s.id
+                    JOIN units u ON s.course_id = u.course_id
+                    JOIN knowledge_components kc2 ON u.id = kc2.unit_id
+                    WHERE e.student_id = $1 AND e.tenant_id = $2
+                    UNION
+                    SELECT ae.knowledge_component_id
+                    FROM answer_events ae
+                    WHERE ae.student_id = $1 AND ae.tenant_id = $2
+                    UNION
+                    SELECT cee.knowledge_component_id
+                    FROM content_exposure_events cee
+                    WHERE cee.student_id = $1 AND cee.tenant_id = $2
+                )
             """
             params: list[Any] = [student_id, tenant_id]
             if knowledge_component_id is not None:
                 kc_query += " AND kc.id = $3"
                 params.append(knowledge_component_id)
+            kc_query += " ORDER BY kc.name ASC, kc.id ASC"
 
             kc_rows = await conn.fetch(kc_query, *params)
             kc_map: dict[uuid.UUID, tuple[str, float]] = {
@@ -120,7 +133,7 @@ class UnifiedHistoryBuilder:
             if not kc_map:
                 return {}
 
-            # 2. Query content_exposure_events (strictly causal: event_timestamp < reference_time)
+            # 2. Query content_exposure_events (strictly causal: event_timestamp <= reference_time)
             exposure_sql = """
                 SELECT 
                     id,
@@ -135,7 +148,7 @@ class UnifiedHistoryBuilder:
                     false AS is_delayed_assessment,
                     metadata
                 FROM content_exposure_events
-                WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp < $3
+                WHERE student_id = $1 AND tenant_id = $2 AND event_timestamp <= $3
             """
             exp_params: list[Any] = [student_id, tenant_id, reference_time]
             if knowledge_component_id is not None:
@@ -144,7 +157,7 @@ class UnifiedHistoryBuilder:
 
             exposure_rows = await conn.fetch(exposure_sql, *exp_params)
 
-            # 3. Query answer_events (strictly causal: event_timestamp < reference_time)
+            # 3. Query answer_events (strictly causal: event_timestamp <= reference_time)
             answer_sql = """
                 SELECT 
                     ae.id,
@@ -161,7 +174,7 @@ class UnifiedHistoryBuilder:
                 FROM answer_events ae
                 LEFT JOIN questions q ON ae.question_id = q.id
                 LEFT JOIN activities act ON ae.activity_id = act.id
-                WHERE ae.student_id = $1 AND ae.tenant_id = $2 AND ae.event_timestamp < $3
+                WHERE ae.student_id = $1 AND ae.tenant_id = $2 AND ae.event_timestamp <= $3
             """
             ans_params: list[Any] = [student_id, tenant_id, reference_time]
             if knowledge_component_id is not None:

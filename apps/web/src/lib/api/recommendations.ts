@@ -96,7 +96,8 @@ export interface StudentRetentionSummaryResponse {
 
 export async function getStudentRetention(
   tau: number = 0.650,
-  kcId?: string
+  kcId?: string,
+  options?: RequestInit
 ): Promise<StudentRetentionSummaryResponse> {
   const query = new URLSearchParams();
   query.set("tau", tau.toString());
@@ -104,40 +105,43 @@ export async function getStudentRetention(
 
   return apiFetch<StudentRetentionSummaryResponse>(
     `/api/v1/students/me/retention?${query.toString()}`,
-    { method: "GET" },
+    { method: "GET", ...(options || {}) },
     "student"
   );
 }
 
 export async function getStudentRecommendations(
-  includeCompleted: boolean = false
+  includeCompleted: boolean = false,
+  options?: RequestInit
 ): Promise<RecommendationItemResponse[]> {
   const query = new URLSearchParams();
   if (includeCompleted) query.set("include_completed", "true");
 
   return apiFetch<RecommendationItemResponse[]>(
     `/api/v1/students/me/recommendations?${query.toString()}`,
-    { method: "GET" },
+    { method: "GET", ...(options || {}) },
     "student"
   );
 }
 
 export async function evaluateRecommendations(
-  tau: number = 0.650
+  tau: number = 0.650,
+  options?: RequestInit
 ): Promise<AdaptationEvaluationResponse> {
   return apiFetch<AdaptationEvaluationResponse>(
     `/api/v1/students/me/recommendations/evaluate?tau=${tau}`,
-    { method: "POST" },
+    { method: "POST", ...(options || {}) },
     "student"
   );
 }
 
 export async function completeRecommendation(
-  recommendationId: string
+  recommendationId: string,
+  options?: RequestInit
 ): Promise<CompleteRecommendationResponse> {
   return apiFetch<CompleteRecommendationResponse>(
     `/api/v1/students/me/recommendations/${recommendationId}/complete`,
-    { method: "POST" },
+    { method: "POST", ...(options || {}) },
     "student"
   );
 }
