@@ -1,7 +1,12 @@
 /**
- * Authenticated End-to-End & Protocol Flows Tests (R1.2 / Phase 3.4)
+ * Authenticated Policy & Protocol Matrix Tests (R1.2 / Phase 3.4)
  *
- * Verifies critical authenticated lifecycle flows:
+ * NOTE ON TEST CLASSIFICATION (Deployment Gate Audit):
+ * These tests validate pure authorization decisions, route classification, safe
+ * redirects, and role boundary policies in isolation (Unit / Contract level).
+ * For live authenticated server protocol integration, see `authenticated-server-integration.test.mjs`.
+ *
+ * Verifies critical authenticated lifecycle policies:
  * 1. Login session resolution and safe redirect per role (student vs teacher).
  * 2. Logout session cleanup and invalidation.
  * 3. Route protection for unauthenticated requests with return path encoding.
@@ -36,7 +41,7 @@ function getPedagogicalBadge(pRecall) {
   return { label: "Refuerzo sugerido", variant: "warning" };
 }
 
-describe("R1.2: Authenticated E2E Critical Flows", () => {
+describe("R1.2: Authenticated Policy & Routing Matrix (Unit/Contract Tests)", () => {
   // 1. Login session resolution and role normalization
   test("1. Login: resolves verified session role and returns canonical home path", () => {
     const studentUser = { id: "std-001", role: "student" };

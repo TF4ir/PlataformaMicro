@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:cloudflare": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
-    "deploy": "node ../../scripts/release-cloudflare.mjs",
+    "deploy": "wrangler deploy",
     "deploy:dry-run": "node ../../scripts/release-cloudflare.mjs --dry-run",
     "verify:artifact": "node ../../scripts/verify-release-artifact.mjs",
     "start": "next start",

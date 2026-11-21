@@ -342,7 +342,7 @@ export function verifyReleaseArtifact(options = {}) {
   }
 
   const manifest = {
-    release: "R1.1",
+    release: "R1.2-R2",
     status: "VERIFIED",
     verifiedAt,
     git: {

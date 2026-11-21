@@ -19,7 +19,7 @@
     "verify:artifact": "node scripts/verify-release-artifact.mjs",
     "release:cloudflare": "node scripts/release-cloudflare.mjs",
     "release:cloudflare:dry-run": "node scripts/release-cloudflare.mjs --dry-run",
-    "deploy": "node scripts/release-cloudflare.mjs",
+    "deploy": "npm --prefix apps/web run deploy",
     "deploy:dry-run": "node scripts/release-cloudflare.mjs --dry-run",
     "deploy:cloudflare": "node scripts/release-cloudflare.mjs",
     "deploy:cloudflare:dry-run": "node scripts/release-cloudflare.mjs --dry-run",

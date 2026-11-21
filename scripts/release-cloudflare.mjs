@@ -60,7 +60,7 @@ async function main() {
   const { dryRun, publish, allowDirty, skipBuild } = parseCliArgs();
 
   console.log("===============================================================================");
-  console.log("   PlataformaMicro Cloudflare Release Pipeline (R1.1 - Coordinated Deploy)");
+  console.log("   PlataformaMicro Cloudflare Release Pipeline (R1.2 / R2 - Coordinated Deploy)");
   console.log(`   Mode: ${publish && !dryRun ? "🚨 PRODUCTION PUBLISH" : "🛡️  DRY-RUN (Safe Verification)"}`);
   console.log("===============================================================================");
 
@@ -147,8 +147,8 @@ async function main() {
 
   // 6. Publication via Wrangler
   console.log("\n[Step 6/6] Publishing Worker to Cloudflare...");
-  const releaseMessage = `Release R1.1 commit ${commitHash.slice(0, 7)} (${branchName})`;
-  const releaseTag = `r1-${buildId.slice(0, 12)}`;
+  const releaseMessage = `Release R1.2/R2 commit ${commitHash.slice(0, 7)} (${branchName})`;
+  const releaseTag = `r2-${buildId.slice(0, 12)}`;
 
   // Validated options for Wrangler 4.158.0:
   // --message: A descriptive message for this Worker Version
